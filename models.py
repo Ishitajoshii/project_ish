@@ -48,9 +48,6 @@ class CircuitState(BaseModel):
     cumulative_reward: float
     best_score: float
     done: bool
-    success_tolerance_pct: float
-    cost_weight: float
-    step_weight: float
     min_r_ohms: float
     max_r_ohms: float
     min_c_farads: float

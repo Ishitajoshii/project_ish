@@ -10,6 +10,6 @@
   "max_c_farads": 0.001,
   "max_steps": 8,
   "success_tolerance_pct": 2.0,
-  "cost_weight": 0.35,
-  "step_weight": 0.05
+  "cost_weight": 0.2,
+  "step_weight": 0.1
 }

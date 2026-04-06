@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from server.grader import SUCCESS_TOLERANCE, WEIGHT_COST, WEIGHT_STEP
+
 TASKS_DIR = Path(__file__).resolve().parents[1] / "tasks"
 
 REQUIRED_FIELDS = {
@@ -53,6 +55,14 @@ def _validate_task(task: dict[str, Any], task_path: Path) -> None:
     total_weight = float(task["cost_weight"]) + float(task["step_weight"])
     if total_weight > 1.0:
         raise ValueError(f"Task {task_path} has cost_weight + step_weight > 1.0")
+    if float(task["success_tolerance_pct"]) != SUCCESS_TOLERANCE * 100.0:
+        raise ValueError(
+            f"Task {task_path} must use success_tolerance_pct={SUCCESS_TOLERANCE * 100.0}"
+        )
+    if float(task["cost_weight"]) != WEIGHT_COST:
+        raise ValueError(f"Task {task_path} must use cost_weight={WEIGHT_COST}")
+    if float(task["step_weight"]) != WEIGHT_STEP:
+        raise ValueError(f"Task {task_path} must use step_weight={WEIGHT_STEP}")
 
 
 def load_task(path: str | Path) -> dict[str, Any]:

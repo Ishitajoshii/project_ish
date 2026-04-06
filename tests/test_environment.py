@@ -2,6 +2,7 @@
 
 from inference import run_all_inference
 from server.environment import CircuitEnvironment
+from server.grader import normalized_score
 from server.task_loader import list_task_ids, load_task
 
 
@@ -34,3 +35,20 @@ def test_invalid_action_reports_last_action_error():
 def test_inference_enumerates_same_task_ids_as_loader():
     results = run_all_inference("tasks")
     assert [result["task_id"] for result in results] == list_task_ids("tasks")
+
+
+def test_final_score_uses_best_reward_seen():
+    env = CircuitEnvironment(load_task("tasks/lp_1khz_budget.json"))
+    env.reset()
+
+    first = env.step({"action": "r_up"})
+    best_after_first = normalized_score(
+        first.normalized_error,
+        first.current_cost,
+        1,
+        8,
+    )
+    assert env.score() == best_after_first
+
+    env.step({"action": "r_down"})
+    assert env.score() == best_after_first

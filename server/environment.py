@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from models import CircuitObservation, CircuitState
-from server.grader import normalized_score
+from server.grader import SUCCESS_TOLERANCE, normalized_score
 from server.simulator import apply_action, component_cost, cutoff_frequency_hz, gain_db
 
 
@@ -38,16 +38,12 @@ class CircuitEnvironment:
             cumulative_reward=0.0,
             best_score=0.0,
             done=False,
-            success_tolerance_pct=float(self.task["success_tolerance_pct"]),
-            cost_weight=float(self.task["cost_weight"]),
-            step_weight=float(self.task["step_weight"]),
             min_r_ohms=float(self.task["min_r_ohms"]),
             max_r_ohms=float(self.task["max_r_ohms"]),
             min_c_farads=float(self.task["min_c_farads"]),
             max_c_farads=float(self.task["max_c_farads"]),
         )
         self._refresh_metrics()
-        self.state.best_score = self.score()
         return self._observation()
 
     def step(self, action: dict[str, Any]) -> CircuitObservation:
@@ -72,23 +68,13 @@ class CircuitEnvironment:
         self.state.last_action_error = None
         self.state.step_count += 1
         self._refresh_metrics()
-        step_score = self.score()
-        self.state.cumulative_reward += step_score
-        self.state.best_score = max(self.state.best_score, step_score)
         return self._observation()
 
     def score(self) -> float:
         if self.state is None:
             raise RuntimeError("Environment must be reset before score")
 
-        return normalized_score(
-            self.state.normalized_error,
-            self.state.current_cost,
-            self.state.step_count,
-            self.state.max_steps,
-            self.state.cost_weight,
-            self.state.step_weight,
-        )
+        return self.state.best_score
 
     def _observation(self) -> CircuitObservation:
         assert self.state is not None
@@ -114,8 +100,7 @@ class CircuitEnvironment:
         }
 
     def _success_tolerance_ratio(self) -> float:
-        assert self.state is not None
-        return self.state.success_tolerance_pct / 100.0
+        return SUCCESS_TOLERANCE
 
     def _refresh_metrics(self) -> None:
         assert self.state is not None
@@ -133,6 +118,15 @@ class CircuitEnvironment:
             self.state.normalized_error <= self._success_tolerance_ratio()
             or self.state.step_count >= self.state.max_steps
         )
+        if self.state.step_count > 0:
+            current_reward = normalized_score(
+                self.state.normalized_error,
+                self.state.current_cost,
+                self.state.step_count,
+                self.state.max_steps,
+            )
+            self.state.cumulative_reward += current_reward
+            self.state.best_score = max(self.state.best_score, current_reward)
 
         # Gain is still a useful derived metric for UI/debugging callers, so keep
         # the circuit-type mapping exercised during every state refresh.
