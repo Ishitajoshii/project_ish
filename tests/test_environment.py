@@ -52,3 +52,18 @@ def test_final_score_uses_best_reward_seen():
 
     env.step({"action": "r_down"})
     assert env.score() == best_after_first
+
+
+def test_low_cost_task_starts_expensive_and_can_improve_by_moving_r_down():
+    env = CircuitEnvironment(load_task("tasks/lp_2khz_low_cost.json"))
+    start = env.reset()
+
+    assert start.current_output_hz < start.target_hz
+    initial_cost = start.current_cost
+
+    latest = start
+    for _ in range(6):
+        latest = env.step({"action": "r_down"})
+
+    assert latest.current_cost < initial_cost
+    assert latest.normalized_error <= 0.02
