@@ -17,9 +17,10 @@ def run_inference(task_file: str) -> dict:
     env = CircuitEnvironment(task)
     obs = env.reset()
 
-    # Minimal deterministic policy: nudge resistor opposite to gain sign.
+    # Minimal deterministic policy: adjust R in the direction that moves cutoff
+    # frequency toward the target.
     while not env.is_done:
-        delta = -0.05 if obs.gain_db > 0 else 0.05
+        delta = 0.2 if obs.current_output_hz > task["target_hz"] else -0.2
         obs = env.step({"component": "R", "delta": delta})
 
     score = env.score()
@@ -27,8 +28,10 @@ def run_inference(task_file: str) -> dict:
         "task_id": task["task_id"],
         "score": score,
         "details": {
-            "final_gain_db": obs.gain_db,
-            "cost": obs.cost,
+            "final_output_hz": obs.current_output_hz,
+            "normalized_error": obs.normalized_error,
+            "cost": obs.current_cost,
+            "solved": obs.solved,
         },
     }
 

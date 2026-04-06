@@ -17,7 +17,10 @@ def do_step(component: str, delta: float):
 
     obs = _ENV.step({"component": component, "delta": delta})
     return (
-        f"fc={obs.frequency_hz:.2f}Hz, gain={obs.gain_db:.2f}dB, cost={obs.cost:.2f}",
+        (
+            f"fc={obs.current_output_hz:.2f}Hz, error={obs.normalized_error:.3f}, "
+            f"cost={obs.current_cost:.3f}, solved={obs.solved}"
+        ),
         _ENV.score(),
         _ENV.is_done,
     )
@@ -25,8 +28,8 @@ def do_step(component: str, delta: float):
 
 with gr.Blocks(title="circuitrl") as demo:
     gr.Markdown("# circuitrl demo\nQuick manual stepping UI.")
-    comp = gr.Dropdown(["R", "C", "L"], value="R", label="Component")
-    delta = gr.Slider(-0.2, 0.2, value=0.01, step=0.01, label="Delta")
+    comp = gr.Dropdown(["R", "C"], value="R", label="Component")
+    delta = gr.Slider(-0.5, 0.5, value=0.2, step=0.05, label="Delta")
     out = gr.Textbox(label="Observation")
     score = gr.Number(label="Score")
     done = gr.Checkbox(label="Done")

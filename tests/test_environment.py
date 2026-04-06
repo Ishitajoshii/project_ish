@@ -9,7 +9,7 @@ def test_reset_and_step_cycle():
     obs = env.reset()
     assert obs.remaining_steps > 0
 
-    obs2 = env.step({"component": "R", "delta": 0.01})
+    obs2 = env.step({"component": "R", "delta": 0.2})
     assert obs2.remaining_steps == obs.remaining_steps - 1
 
 

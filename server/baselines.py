@@ -15,21 +15,23 @@ def random_baseline(task: dict[str, Any], seed: int = 0) -> float:
     env = CircuitEnvironment(task)
     env.reset()
     for _ in range(task["max_steps"]):
+        if env.is_done:
+            break
         action = {
-            "component": random.choice(["R", "C", "L"]),
-            "delta": random.uniform(-0.1, 0.1),
+            "component": random.choice(["R", "C"]),
+            "delta": random.choice([-0.2, -0.1, 0.1, 0.2]),
         }
         env.step(action)
     return env.score()
 
 
 def heuristic_baseline(task: dict[str, Any]) -> float:
-    """Use sign-of-gain heuristic to iteratively tune resistor value."""
+    """Use frequency-direction heuristic to iteratively tune resistor value."""
 
     env = CircuitEnvironment(task)
     obs = env.reset()
     while not env.is_done:
-        delta = -0.05 if obs.gain_db > -3.0 else 0.05
+        delta = 0.2 if obs.current_output_hz > task["target_hz"] else -0.2
         obs = env.step({"component": "R", "delta": delta})
     return env.score()
 
@@ -38,10 +40,12 @@ def brute_force_baseline(task: dict[str, Any]) -> float:
     """Try a tiny grid over R deltas and keep the best resulting score."""
 
     best = 0.0
-    for delta in (-0.1, -0.05, 0.0, 0.05, 0.1):
+    for delta in (-0.2, -0.1, 0.1, 0.2):
         env = CircuitEnvironment(task)
         env.reset()
         for _ in range(task["max_steps"]):
+            if env.is_done:
+                break
             env.step({"component": "R", "delta": delta})
         best = max(best, env.score())
     return best
