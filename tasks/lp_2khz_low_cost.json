@@ -1,0 +1,18 @@
+{
+  "task_id": "lp_2khz_low_cost",
+  "description": "Deterministic low-pass target around 2 kHz with tighter low-cost objective.",
+  "mode": "lowpass",
+  "target_frequency_hz": 2000.0,
+  "budget": 80.0,
+  "max_steps": 25,
+  "initial_components": {
+    "R": 1200.0,
+    "C": 6.6e-8,
+    "L": 0.0008
+  },
+  "cost_weights": {
+    "R": 0.01,
+    "C": 45000000.0,
+    "L": 900.0
+  }
+}

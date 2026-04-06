@@ -1,0 +1,18 @@
+# OpenEnv benchmark metadata and validation target for this repository.
+benchmark:
+  name: circuitrl
+  version: 0.1.0
+  description: Deterministic circuit-design benchmark with normalized grading.
+
+entrypoints:
+  server: server.app:app
+  inference: inference.py
+
+validation:
+  # Minimum normalized score expected during validation runs.
+  target_score: 0.65
+  score_range: [0.0, 1.0]
+
+io_contract:
+  stdout_mode: strict_json_line
+  fields: [task_id, score, details]

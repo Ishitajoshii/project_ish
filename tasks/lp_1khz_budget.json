@@ -1,0 +1,18 @@
+{
+  "task_id": "lp_1khz_budget",
+  "description": "Deterministic low-pass target around 1 kHz with moderate budget constraints.",
+  "mode": "lowpass",
+  "target_frequency_hz": 1000.0,
+  "budget": 120.0,
+  "max_steps": 20,
+  "initial_components": {
+    "R": 1000.0,
+    "C": 1.59e-7,
+    "L": 0.001
+  },
+  "cost_weights": {
+    "R": 0.01,
+    "C": 50000000.0,
+    "L": 1000.0
+  }
+}
