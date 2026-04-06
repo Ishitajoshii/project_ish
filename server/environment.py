@@ -60,7 +60,13 @@ class CircuitEnvironment:
             "R": self.state.current_r_ohms,
             "C": self.state.current_c_farads,
         }
-        updated = apply_action(components, action, self._bounds())
+        action_name = str(action.get("action", ""))
+        try:
+            updated = apply_action(components, action_name, self._bounds())
+        except ValueError as exc:
+            self.state.last_action_error = str(exc)
+            return self._observation()
+
         self.state.current_r_ohms = updated["R"]
         self.state.current_c_farads = updated["C"]
         self.state.last_action_error = None

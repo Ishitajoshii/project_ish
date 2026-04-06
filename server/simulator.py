@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Final
 
 
 def _clamp_positive(value: float) -> float:
@@ -12,25 +12,34 @@ def _clamp_positive(value: float) -> float:
     return max(value, 1e-12)
 
 
+ACTION_MULTIPLIERS: Final[dict[str, tuple[str, float]]] = {
+    "r_up": ("R", 1.2),
+    "r_down": ("R", 1.0 / 1.2),
+    "c_up": ("C", 1.2),
+    "c_down": ("C", 1.0 / 1.2),
+}
+
+
+def valid_actions() -> tuple[str, ...]:
+    """Return the supported discrete action identifiers."""
+
+    return tuple(ACTION_MULTIPLIERS)
+
+
 def apply_action(
     components: dict[str, float],
-    action: dict[str, Any],
+    action_name: str,
     bounds: dict[str, tuple[float, float]],
 ) -> dict[str, float]:
-    """Return updated components after applying a multiplicative delta to one key."""
+    """Return updated components after applying one discrete multiplicative action."""
 
     out = dict(components)
-    key = str(action["component"]).upper()
-    if key not in {"R", "C"}:
-        raise ValueError(f"Unsupported component: {key}")
+    try:
+        key, factor = ACTION_MULTIPLIERS[action_name]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported action: {action_name}") from exc
 
-    delta = float(action["delta"])
-    factor = 1.0 + abs(delta)
-    updated = out[key]
-    if delta > 0.0:
-        updated *= factor
-    elif delta < 0.0:
-        updated /= factor
+    updated = out[key] * factor
 
     lower, upper = bounds[key]
     out[key] = min(max(_clamp_positive(updated), lower), upper)

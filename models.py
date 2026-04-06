@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class CircuitAction(BaseModel):
-    """Agent action that multiplicatively adjusts one RC component."""
+    """Agent action chosen from the discrete RC tuning action space."""
 
-    component: str = Field(..., description="Component key, either R or C")
-    delta: float = Field(
+    action: Literal["r_up", "r_down", "c_up", "c_down"] = Field(
         ...,
-        description="Signed multiplicative step size; +0.2 means x1.2, -0.2 means /1.2",
+        description="Discrete action mapped to multiplicative updates of x1.2 or /1.2",
     )
 
 

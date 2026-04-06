@@ -5,6 +5,7 @@ from __future__ import annotations
 import gradio as gr
 
 from server.environment import CircuitEnvironment
+from server.simulator import valid_actions
 from server.task_loader import load_task
 
 _TASK = load_task("tasks/lp_1khz_budget.json")
@@ -12,10 +13,10 @@ _ENV = CircuitEnvironment(_TASK)
 _ENV.reset()
 
 
-def do_step(component: str, delta: float):
+def do_step(action: str):
     """Apply one action and return compact telemetry for display."""
 
-    obs = _ENV.step({"component": component, "delta": delta})
+    obs = _ENV.step({"action": action})
     return (
         (
             f"fc={obs.current_output_hz:.2f}Hz, error={obs.normalized_error:.3f}, "
@@ -28,13 +29,12 @@ def do_step(component: str, delta: float):
 
 with gr.Blocks(title="circuitrl") as demo:
     gr.Markdown("# circuitrl demo\nQuick manual stepping UI.")
-    comp = gr.Dropdown(["R", "C"], value="R", label="Component")
-    delta = gr.Slider(-0.5, 0.5, value=0.2, step=0.05, label="Delta")
+    action = gr.Dropdown(list(valid_actions()), value="r_up", label="Action")
     out = gr.Textbox(label="Observation")
     score = gr.Number(label="Score")
     done = gr.Checkbox(label="Done")
     run = gr.Button("Step")
-    run.click(do_step, inputs=[comp, delta], outputs=[out, score, done])
+    run.click(do_step, inputs=[action], outputs=[out, score, done])
 
 if __name__ == "__main__":
     demo.launch()

@@ -1,13 +1,12 @@
-"""Evaluator-facing script that emits exactly one JSON line to stdout."""
+"""Evaluator-facing script that emits compact JSON lines to stdout."""
 
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 from server.environment import CircuitEnvironment
-from server.task_loader import load_task
+from server.task_loader import list_task_paths, load_task
 
 
 def run_inference(task_file: str) -> dict:
@@ -20,8 +19,8 @@ def run_inference(task_file: str) -> dict:
     # Minimal deterministic policy: adjust R in the direction that moves cutoff
     # frequency toward the target.
     while not env.is_done:
-        delta = 0.2 if obs.current_output_hz > task["target_hz"] else -0.2
-        obs = env.step({"component": "R", "delta": delta})
+        action = "r_up" if obs.current_output_hz > task["target_hz"] else "r_down"
+        obs = env.step({"action": action})
 
     score = env.score()
     return {
@@ -36,15 +35,22 @@ def run_inference(task_file: str) -> dict:
     }
 
 
+def run_all_inference(task_dir: str | None = None) -> list[dict]:
+    """Run inference across the deterministic benchmark task set."""
+
+    return [run_inference(str(task_path)) for task_path in list_task_paths(task_dir)]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, help="Path to task JSON")
+    parser.add_argument("--task", help="Path to one task JSON; omit to run all benchmark tasks")
     args = parser.parse_args()
 
-    result = run_inference(args.task)
+    results = [run_inference(args.task)] if args.task else run_all_inference()
 
-    # Strict stdout contract: emit exactly one compact JSON object line.
-    print(json.dumps(result, separators=(",", ":")))
+    # Emit one compact JSON object line per task for evaluator-friendly logs.
+    for result in results:
+        print(json.dumps(result, separators=(",", ":")))
 
 
 if __name__ == "__main__":

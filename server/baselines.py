@@ -6,6 +6,7 @@ import random
 from typing import Any
 
 from server.environment import CircuitEnvironment
+from server.simulator import valid_actions
 
 
 def random_baseline(task: dict[str, Any], seed: int = 0) -> float:
@@ -17,11 +18,7 @@ def random_baseline(task: dict[str, Any], seed: int = 0) -> float:
     for _ in range(task["max_steps"]):
         if env.is_done:
             break
-        action = {
-            "component": random.choice(["R", "C"]),
-            "delta": random.choice([-0.2, -0.1, 0.1, 0.2]),
-        }
-        env.step(action)
+        env.step({"action": random.choice(valid_actions())})
     return env.score()
 
 
@@ -31,8 +28,8 @@ def heuristic_baseline(task: dict[str, Any]) -> float:
     env = CircuitEnvironment(task)
     obs = env.reset()
     while not env.is_done:
-        delta = 0.2 if obs.current_output_hz > task["target_hz"] else -0.2
-        obs = env.step({"component": "R", "delta": delta})
+        action = "r_up" if obs.current_output_hz > task["target_hz"] else "r_down"
+        obs = env.step({"action": action})
     return env.score()
 
 
@@ -40,12 +37,12 @@ def brute_force_baseline(task: dict[str, Any]) -> float:
     """Try a tiny grid over R deltas and keep the best resulting score."""
 
     best = 0.0
-    for delta in (-0.2, -0.1, 0.1, 0.2):
+    for action in ("r_up", "r_down", "c_up", "c_down"):
         env = CircuitEnvironment(task)
         env.reset()
         for _ in range(task["max_steps"]):
             if env.is_done:
                 break
-            env.step({"component": "R", "delta": delta})
+            env.step({"action": action})
         best = max(best, env.score())
     return best

@@ -6,7 +6,7 @@ from server.simulator import apply_action, component_cost, cutoff_frequency_hz, 
 def test_apply_action_updates_component_multiplicatively():
     comps = {"R": 1000.0, "C": 1e-7}
     bounds = {"R": (100.0, 1_000_000.0), "C": (1e-10, 1e-3)}
-    out = apply_action(comps, {"component": "R", "delta": 0.2}, bounds)
+    out = apply_action(comps, "r_up", bounds)
     assert out["R"] == 1200.0
 
 

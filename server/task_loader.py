@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+TASKS_DIR = Path(__file__).resolve().parents[1] / "tasks"
+
 REQUIRED_FIELDS = {
     "task_id",
     "circuit_type",
@@ -61,3 +63,16 @@ def load_task(path: str | Path) -> dict[str, Any]:
         task = json.load(f)
     _validate_task(task, task_path)
     return task
+
+
+def list_task_paths(task_dir: str | Path | None = None) -> list[Path]:
+    """Return the deterministic list of benchmark task files."""
+
+    base_dir = Path(task_dir) if task_dir is not None else TASKS_DIR
+    return sorted(base_dir.glob("*.json"))
+
+
+def list_task_ids(task_dir: str | Path | None = None) -> list[str]:
+    """Return the task identifiers in the same order used by inference."""
+
+    return [load_task(path)["task_id"] for path in list_task_paths(task_dir)]
