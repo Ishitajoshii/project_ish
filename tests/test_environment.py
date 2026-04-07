@@ -15,8 +15,10 @@ def test_reset_and_step_cycle():
     obs = env.reset(task["task_id"])
     assert obs.remaining_steps > 0
 
-    obs2 = env.step(CircuitAction(action="r_up"))
+    obs2, reward, done = env.step(CircuitAction(action="r_up"))
     assert obs2.remaining_steps == obs.remaining_steps - 1
+    assert 0.0 <= reward <= 1.0
+    assert done is False
 
 
 def test_score_is_bounded():
@@ -30,12 +32,14 @@ def test_score_is_bounded():
 def test_invalid_action_reports_last_action_error():
     task = load_task("tasks/lp_1khz_budget.json")
     env = CircuitEnvironment({task["task_id"]: task})
-    obs = env.reset(task["task_id"])
+    env.reset(task["task_id"])
 
-    obs = env.step({"action": "nope"})
+    obs, reward, done = env.step({"action": "nope"})
 
     assert obs.last_action_error == "invalid action: nope"
     assert obs.remaining_steps == 7
+    assert 0.0 <= reward <= 1.0
+    assert done is False
     assert env.score() > 0.0
 
 
@@ -49,7 +53,7 @@ def test_final_score_uses_best_reward_seen():
     env = CircuitEnvironment({task["task_id"]: task})
     env.reset(task["task_id"])
 
-    first = env.step(CircuitAction(action="r_up"))
+    first, reward, done = env.step(CircuitAction(action="r_up"))
     best_after_first = normalized_score(
         first.normalized_error,
         first.current_cost,
@@ -57,6 +61,8 @@ def test_final_score_uses_best_reward_seen():
         8,
     )
     assert env.score() == best_after_first
+    assert reward == best_after_first
+    assert done is False
 
     env.step(CircuitAction(action="r_down"))
     assert env.score() == best_after_first
@@ -72,7 +78,7 @@ def test_low_cost_task_starts_expensive_and_can_improve_by_moving_r_down():
 
     latest = start
     for _ in range(6):
-        latest = env.step(CircuitAction(action="r_down"))
+        latest, _, _ = env.step(CircuitAction(action="r_down"))
 
     assert latest.current_cost < initial_cost
     assert latest.normalized_error <= 0.02
@@ -95,7 +101,7 @@ def test_step_before_reset_raises_clear_error():
     task = load_task("tasks/lp_1khz_budget.json")
     env = CircuitEnvironment({task["task_id"]: task})
 
-    with pytest.raises(RuntimeError, match="environment must be reset before stepping"):
+    with pytest.raises(RuntimeError, match="environment must be reset before use"):
         env.step(CircuitAction(action="r_up"))
 
 

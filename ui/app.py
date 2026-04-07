@@ -17,14 +17,14 @@ _ENV.reset(_TASK["task_id"])
 def do_step(action: str):
     """Apply one action and return compact telemetry for display."""
 
-    obs = _ENV.step(CircuitAction(action=action))
+    obs, reward, done = _ENV.step(CircuitAction(action=action))
     return (
         (
             f"fc={obs.current_hz:.2f}Hz, error={obs.normalized_error:.3f}, "
-            f"cost={obs.current_cost:.3f}, done={_ENV.is_done}"
+            f"cost={obs.current_cost:.3f}, reward={reward:.3f}, done={done}"
         ),
         _ENV.score(),
-        _ENV.is_done,
+        done,
     )
 
 

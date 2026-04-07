@@ -30,7 +30,7 @@ def heuristic_baseline(task: dict[str, Any]) -> float:
     obs = env.reset(task["task_id"])
     while not env.is_done:
         action = "r_up" if obs.current_hz > task["target_hz"] else "r_down"
-        obs = env.step(CircuitAction(action=action))
+        obs, _, _ = env.step(CircuitAction(action=action))
     return env.score()
 
 

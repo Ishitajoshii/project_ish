@@ -43,8 +43,8 @@ def step(action: CircuitAction) -> dict:
 
     if _ENV is None:
         raise HTTPException(status_code=400, detail="Environment not initialized")
-    obs = _ENV.step(action)
-    return {"observation": obs.model_dump(), "done": _ENV.is_done}
+    obs, reward, done = _ENV.step(action)
+    return {"observation": obs.model_dump(), "reward": reward, "done": done}
 
 
 @app.get("/score")

@@ -39,11 +39,11 @@ class CircuitEnvironment:
     def is_done(self) -> bool:
         return self.task is not None and self.done
 
-    def reset(self, task_id: str | None = None) -> CircuitObservation:
-        selected_task = self._select_task(task_id)
-        self.task = selected_task
-        self.current_r_ohms = selected_task.initial_r_ohms
-        self.current_c_farads = selected_task.initial_c_farads
+    def reset(self, task_id: str) -> CircuitObservation:
+        task = self._select_task(task_id)
+        self.task = task
+        self.current_r_ohms = task.initial_r_ohms
+        self.current_c_farads = task.initial_c_farads
         self.current_hz = 0.0
         self.normalized_error = 0.0
         self.current_cost = 0.0
@@ -52,10 +52,28 @@ class CircuitEnvironment:
         self.best_score = 0.0
         self.done = False
         self.last_action_error = None
-        self._refresh_metrics()
-        return self._build_observation()
+        metrics = evaluate_circuit_state(
+            r_ohms=self.current_r_ohms,
+            c_farads=self.current_c_farads,
+            target_hz=task.target_hz,
+            step_count=self.step_count,
+            max_steps=task.max_steps,
+            success_tolerance=SUCCESS_TOLERANCE,
+            min_r_ohms=task.min_r_ohms,
+            max_r_ohms=task.max_r_ohms,
+            min_c_farads=task.min_c_farads,
+            max_c_farads=task.max_c_farads,
+        )
+        self.current_hz = float(metrics["current_hz"])
+        self.normalized_error = float(metrics["normalized_error"])
+        self.current_cost = float(metrics["normalized_cost"])
+        return self._build_observation(
+            current_hz=self.current_hz,
+            normalized_error=self.normalized_error,
+            current_cost=self.current_cost,
+        )
 
-    def step(self, action: CircuitAction | dict[str, Any]) -> CircuitObservation:
+    def step(self, action: CircuitAction | dict[str, Any]) -> tuple[CircuitObservation, float, bool]:
         task = self._require_task()
         if self.is_done:
             raise RuntimeError("episode is already done; call reset() to start a new task")
@@ -78,8 +96,34 @@ class CircuitEnvironment:
         self.current_c_farads = new_c
         self.last_action_error = error
         self.step_count += 1
-        self._refresh_metrics()
-        return self._build_observation()
+        metrics = evaluate_circuit_state(
+            r_ohms=self.current_r_ohms,
+            c_farads=self.current_c_farads,
+            target_hz=task.target_hz,
+            step_count=self.step_count,
+            max_steps=task.max_steps,
+            success_tolerance=SUCCESS_TOLERANCE,
+            min_r_ohms=task.min_r_ohms,
+            max_r_ohms=task.max_r_ohms,
+            min_c_farads=task.min_c_farads,
+            max_c_farads=task.max_c_farads,
+        )
+
+        reward = float(metrics["reward"])
+        done = bool(metrics["done"])
+        self.current_hz = float(metrics["current_hz"])
+        self.normalized_error = float(metrics["normalized_error"])
+        self.current_cost = float(metrics["normalized_cost"])
+        self.cumulative_reward += reward
+        self.best_score = max(self.best_score, reward)
+        self.done = done
+
+        observation = self._build_observation(
+            current_hz=self.current_hz,
+            normalized_error=self.normalized_error,
+            current_cost=self.current_cost,
+        )
+        return observation, reward, done
 
     def state(self) -> CircuitState:
         self._require_task()
@@ -104,10 +148,15 @@ class CircuitEnvironment:
 
     def _require_task(self) -> CircuitTaskSpec:
         if self.task is None:
-            raise RuntimeError("environment must be reset before stepping")
+            raise RuntimeError("environment must be reset before use")
         return self.task
 
-    def _build_observation(self) -> CircuitObservation:
+    def _build_observation(
+        self,
+        current_hz: float,
+        normalized_error: float,
+        current_cost: float,
+    ) -> CircuitObservation:
         task = self._require_task()
         return CircuitObservation(
             task_id=task.task_id,
@@ -115,9 +164,9 @@ class CircuitEnvironment:
             target_hz=task.target_hz,
             current_r_ohms=self.current_r_ohms,
             current_c_farads=self.current_c_farads,
-            current_hz=self.current_hz,
-            normalized_error=self.normalized_error,
-            current_cost=self.current_cost,
+            current_hz=current_hz,
+            normalized_error=normalized_error,
+            current_cost=current_cost,
             remaining_steps=task.max_steps - self.step_count,
             last_action_error=self.last_action_error,
         )
@@ -135,34 +184,7 @@ class CircuitEnvironment:
             current_hz=self.current_hz,
         )
 
-    def _refresh_metrics(self) -> None:
-        task = self._require_task()
-        evaluation = evaluate_circuit_state(
-            self.current_r_ohms,
-            self.current_c_farads,
-            task.target_hz,
-            self.step_count,
-            task.max_steps,
-            SUCCESS_TOLERANCE,
-            task.min_r_ohms,
-            task.max_r_ohms,
-            task.min_c_farads,
-            task.max_c_farads,
-        )
-        self.current_hz = float(evaluation["current_hz"])
-        self.normalized_error = float(evaluation["normalized_error"])
-        self.current_cost = float(evaluation["normalized_cost"])
-        self.done = bool(evaluation["done"])
-        if self.step_count > 0:
-            current_reward = float(evaluation["reward"])
-            self.cumulative_reward += current_reward
-            self.best_score = max(self.best_score, current_reward)
-
-    def _select_task(self, task_id: str | None) -> CircuitTaskSpec:
-        if task_id is None:
-            if len(self.tasks) != 1:
-                raise ValueError("task_id is required when multiple tasks are available")
-            return next(iter(self.tasks.values()))
+    def _select_task(self, task_id: str) -> CircuitTaskSpec:
         try:
             return self.tasks[task_id]
         except KeyError as exc:

@@ -21,7 +21,7 @@ def run_inference(task_file: str) -> dict:
     # frequency toward the target.
     while not env.is_done:
         action = "r_up" if obs.current_hz > task["target_hz"] else "r_down"
-        obs = env.step(CircuitAction(action=action))
+        obs, _, _ = env.step(CircuitAction(action=action))
 
     score = env.score()
     return {
