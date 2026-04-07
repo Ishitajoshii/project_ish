@@ -66,7 +66,7 @@ def apply_action(
     elif action == "c_down":
         new_c = c_farads / scale_factor
     else:
-        return r_ohms, c_farads, f"unsupported action: {action}"
+        return r_ohms, c_farads, f"invalid action: {action}"
 
     new_r = clamp_value(new_r, min_r_ohms, max_r_ohms)
     new_c = clamp_value(new_c, min_c_farads, max_c_farads)
@@ -83,13 +83,19 @@ def compute_normalized_error(current_hz: float, target_hz: float) -> float:
 def normalize_log_value(value: float, min_value: float, max_value: float) -> float:
     """Normalize one value into [0, 1] on a base-10 log scale."""
 
-    safe_min = max(min_value, 1e-12)
-    safe_max = max(max_value, safe_min + 1e-12)
-    safe_value = max(value, 1e-12)
-    log_min = math.log10(safe_min)
-    log_max = math.log10(safe_max)
-    log_value = math.log10(safe_value)
-    span = max(log_max - log_min, 1e-12)
+    if value <= 0:
+        raise ValueError("value must be > 0")
+    if min_value <= 0:
+        raise ValueError("min_value must be > 0")
+    if max_value <= 0:
+        raise ValueError("max_value must be > 0")
+    if min_value >= max_value:
+        raise ValueError("min_value must be < max_value")
+
+    log_min = math.log10(min_value)
+    log_max = math.log10(max_value)
+    log_value = math.log10(value)
+    span = log_max - log_min
     normalized = (log_value - log_min) / span
     return clamp_value(normalized, 0.0, 1.0)
 
