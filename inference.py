@@ -8,7 +8,7 @@ from pathlib import Path
 
 from models import CircuitAction
 from server.environment import CircuitEnvironment
-from server.task_loader import get_default_task_ids, load_task_file, load_tasks
+from server.task_loader import get_task_ids_in_order, load_task_file, load_tasks
 
 
 def run_inference(task_file: str) -> dict:
@@ -42,7 +42,7 @@ def run_all_inference(task_dir: str | None = None) -> list[dict]:
 
     base_dir = Path(task_dir) if task_dir is not None else Path("tasks")
     tasks = load_tasks(base_dir)
-    ordered_ids = get_default_task_ids(tasks)
+    ordered_ids = get_task_ids_in_order(tasks)
     return [run_inference(str(base_dir / f"{task_id}.json")) for task_id in ordered_ids]
 
 

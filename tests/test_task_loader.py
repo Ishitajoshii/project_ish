@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-from server.task_loader import DEFAULT_TASK_IDS, get_default_task_ids, load_task, load_tasks
+from server.task_loader import DEFAULT_TASK_ORDER, get_task_ids_in_order, load_task, load_tasks
 
 
 def test_load_task_returns_typed_spec():
@@ -16,13 +16,13 @@ def test_load_task_returns_typed_spec():
 
 def test_load_tasks_returns_registry_keyed_by_task_id():
     tasks = load_tasks(Path("tasks"))
-    assert set(DEFAULT_TASK_IDS).issubset(tasks.keys())
+    assert set(DEFAULT_TASK_ORDER).issubset(tasks.keys())
     assert tasks["hp_500hz_budget"].circuit_type == "high_pass"
 
 
-def test_get_default_task_ids_returns_stable_order():
+def test_get_task_ids_in_order_returns_stable_order():
     tasks = load_tasks(Path("tasks"))
-    assert get_default_task_ids(tasks)[:4] == DEFAULT_TASK_IDS
+    assert get_task_ids_in_order(tasks) == DEFAULT_TASK_ORDER
 
 
 def test_load_tasks_rejects_duplicate_task_ids():

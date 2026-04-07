@@ -9,7 +9,7 @@ from models import CircuitTaskSpec
 from server.simulator import SUCCESS_TOLERANCE, WEIGHT_COST, WEIGHT_STEP
 
 TASKS_DIR = Path(__file__).resolve().parents[1] / "tasks"
-DEFAULT_TASK_IDS = [
+DEFAULT_TASK_ORDER = [
     "lp_1khz_budget",
     "lp_10khz_budget",
     "hp_500hz_budget",
@@ -87,19 +87,20 @@ def list_task_paths(task_dir: str | Path | None = None) -> list[Path]:
 
     base_dir = Path(task_dir) if task_dir is not None else TASKS_DIR
     tasks = load_tasks(base_dir)
-    return [base_dir / f"{task_id}.json" for task_id in get_default_task_ids(tasks)]
+    return [base_dir / f"{task_id}.json" for task_id in get_task_ids_in_order(tasks)]
 
 
-def get_default_task_ids(tasks: dict[str, CircuitTaskSpec]) -> list[str]:
-    """Return task ids in stable benchmark order."""
+def get_task_ids_in_order(tasks: dict[str, CircuitTaskSpec]) -> list[str]:
+    """Return the canonical deterministic benchmark task order."""
 
-    ordered = [task_id for task_id in DEFAULT_TASK_IDS if task_id in tasks]
-    remainder = sorted(task_id for task_id in tasks if task_id not in DEFAULT_TASK_IDS)
-    return ordered + remainder
+    missing = [task_id for task_id in DEFAULT_TASK_ORDER if task_id not in tasks]
+    if missing:
+        raise ValueError(f"Missing required benchmark task ids: {', '.join(missing)}")
+    return list(DEFAULT_TASK_ORDER)
 
 
 def list_task_ids(task_dir: str | Path | None = None) -> list[str]:
     """Return task identifiers in the same stable order used by inference."""
 
     base_dir = Path(task_dir) if task_dir is not None else TASKS_DIR
-    return get_default_task_ids(load_tasks(base_dir))
+    return get_task_ids_in_order(load_tasks(base_dir))
