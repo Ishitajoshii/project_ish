@@ -4,28 +4,29 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from models import CircuitAction
 from server.environment import CircuitEnvironment
-from server.task_loader import list_task_paths, load_task
+from server.task_loader import get_default_task_ids, load_task_file, load_tasks
 
 
 def run_inference(task_file: str) -> dict:
     """Run a deterministic heuristic and return evaluator payload."""
 
-    task = load_task(task_file)
-    env = CircuitEnvironment({task["task_id"]: task})
-    obs = env.reset(task["task_id"])
+    task = load_task_file(Path(task_file))
+    env = CircuitEnvironment({task.task_id: task})
+    obs = env.reset(task.task_id)
 
     # Minimal deterministic policy: adjust R in the direction that moves cutoff
     # frequency toward the target.
     while not env.is_done:
-        action = "r_up" if obs.current_hz > task["target_hz"] else "r_down"
+        action = "r_up" if obs.current_hz > task.target_hz else "r_down"
         obs, _, _ = env.step(CircuitAction(action=action))
 
     score = env.score()
     return {
-        "task_id": task["task_id"],
+        "task_id": task.task_id,
         "score": score,
         "details": {
             "final_output_hz": obs.current_hz,
@@ -39,7 +40,10 @@ def run_inference(task_file: str) -> dict:
 def run_all_inference(task_dir: str | None = None) -> list[dict]:
     """Run inference across the deterministic benchmark task set."""
 
-    return [run_inference(str(task_path)) for task_path in list_task_paths(task_dir)]
+    base_dir = Path(task_dir) if task_dir is not None else Path("tasks")
+    tasks = load_tasks(base_dir)
+    ordered_ids = get_default_task_ids(tasks)
+    return [run_inference(str(base_dir / f"{task_id}.json")) for task_id in ordered_ids]
 
 
 def main() -> None:

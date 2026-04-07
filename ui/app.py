@@ -10,8 +10,8 @@ from server.simulator import valid_actions
 from server.task_loader import load_task
 
 _TASK = load_task("tasks/lp_1khz_budget.json")
-_ENV = CircuitEnvironment({_TASK["task_id"]: _TASK})
-_ENV.reset(_TASK["task_id"])
+_ENV = CircuitEnvironment({_TASK.task_id: _TASK})
+_ENV.reset(_TASK.task_id)
 
 
 def do_step(action: str):

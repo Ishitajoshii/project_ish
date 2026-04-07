@@ -32,9 +32,9 @@ def reset(req: ResetRequest) -> dict:
 
     global _ENV
     task = load_task(req.task_path)
-    _ENV = CircuitEnvironment({task["task_id"]: task})
-    obs = _ENV.reset(task["task_id"])
-    return {"observation": obs.model_dump(), "task_id": task["task_id"]}
+    _ENV = CircuitEnvironment({task.task_id: task})
+    obs = _ENV.reset(task.task_id)
+    return {"observation": obs.model_dump(), "task_id": task.task_id}
 
 
 @app.post("/step")

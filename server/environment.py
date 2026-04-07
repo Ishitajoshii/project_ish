@@ -198,7 +198,7 @@ class CircuitEnvironment:
         if isinstance(tasks, CircuitTaskSpec):
             return {tasks.task_id: tasks}
         if isinstance(tasks, Mapping) and "task_id" in tasks:
-            spec = CircuitTaskSpec.model_validate(tasks)
+            spec = tasks if isinstance(tasks, CircuitTaskSpec) else CircuitTaskSpec.model_validate(tasks)
             return {spec.task_id: spec}
 
         registry: dict[str, CircuitTaskSpec] = {}
