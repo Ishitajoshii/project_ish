@@ -49,6 +49,38 @@ def test_apply_action_c_down_changes_only_c():
     assert new_c == 1e-6 / ACTION_SCALE_FACTOR
 
 
+def test_apply_action_r_down_changes_only_r():
+    new_r, new_c, error = apply_action(
+        1000.0,
+        1e-6,
+        "r_down",
+        ACTION_SCALE_FACTOR,
+        100.0,
+        1_000_000.0,
+        1e-9,
+        1e-3,
+    )
+    assert error is None
+    assert new_r == 1000.0 / ACTION_SCALE_FACTOR
+    assert new_c == 1e-6
+
+
+def test_apply_action_c_up_changes_only_c():
+    new_r, new_c, error = apply_action(
+        1000.0,
+        1e-6,
+        "c_up",
+        ACTION_SCALE_FACTOR,
+        100.0,
+        1_000_000.0,
+        1e-9,
+        1e-3,
+    )
+    assert error is None
+    assert new_r == 1000.0
+    assert new_c == 1e-6 * ACTION_SCALE_FACTOR
+
+
 def test_apply_action_clamps_to_bounds():
     new_r, new_c, error = apply_action(
         1_000_000.0,
@@ -148,3 +180,7 @@ def test_error_reward_and_done_helpers_are_consistent():
     assert 0.0 <= compute_step_efficiency(2, 8) <= 1.0
     assert 0.0 <= reward <= 1.0
     assert done is True
+
+
+def test_is_done_triggers_on_step_limit():
+    assert is_done(0.5, 8, 8, SUCCESS_TOLERANCE) is True
