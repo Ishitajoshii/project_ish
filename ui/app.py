@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import gradio as gr
 
+from models import CircuitAction
 from server.environment import CircuitEnvironment
 from server.simulator import valid_actions
 from server.task_loader import load_task
 
 _TASK = load_task("tasks/lp_1khz_budget.json")
-_ENV = CircuitEnvironment(_TASK)
-_ENV.reset()
+_ENV = CircuitEnvironment({_TASK["task_id"]: _TASK})
+_ENV.reset(_TASK["task_id"])
 
 
 def do_step(action: str):
     """Apply one action and return compact telemetry for display."""
 
-    obs = _ENV.step({"action": action})
+    obs = _ENV.step(CircuitAction(action=action))
     return (
         (
             f"fc={obs.current_hz:.2f}Hz, error={obs.normalized_error:.3f}, "

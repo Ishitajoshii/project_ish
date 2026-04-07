@@ -32,8 +32,8 @@ def reset(req: ResetRequest) -> dict:
 
     global _ENV
     task = load_task(req.task_path)
-    _ENV = CircuitEnvironment(task)
-    obs = _ENV.reset()
+    _ENV = CircuitEnvironment({task["task_id"]: task})
+    obs = _ENV.reset(task["task_id"])
     return {"observation": obs.model_dump(), "task_id": task["task_id"]}
 
 
@@ -43,7 +43,7 @@ def step(action: CircuitAction) -> dict:
 
     if _ENV is None:
         raise HTTPException(status_code=400, detail="Environment not initialized")
-    obs = _ENV.step(action.model_dump())
+    obs = _ENV.step(action)
     return {"observation": obs.model_dump(), "done": _ENV.is_done}
 
 

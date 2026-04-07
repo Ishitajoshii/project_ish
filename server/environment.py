@@ -1,11 +1,11 @@
-"""Reset/step/state logic that wraps simulator and grader behavior."""
+"""Episode lifecycle manager around the pure simulator helpers."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Mapping
 
-from models import CircuitObservation, CircuitState
+from models import CircuitAction, CircuitObservation, CircuitState, CircuitTaskSpec
 from server.simulator import (
     ACTION_SCALE_FACTOR,
     SUCCESS_TOLERANCE,
@@ -16,111 +16,171 @@ from server.simulator import (
 
 @dataclass
 class CircuitEnvironment:
-    """Deterministic environment with bounded horizon and static task target."""
+    """Manage one active circuit-tuning episode over a task registry."""
 
-    task: dict[str, Any]
+    tasks: Mapping[str, CircuitTaskSpec | dict[str, Any]] | CircuitTaskSpec | dict[str, Any]
+    action_scale_factor: float = ACTION_SCALE_FACTOR
+    task: CircuitTaskSpec | None = field(init=False, default=None)
+    current_r_ohms: float = field(init=False, default=0.0)
+    current_c_farads: float = field(init=False, default=0.0)
+    current_hz: float = field(init=False, default=0.0)
+    normalized_error: float = field(init=False, default=0.0)
+    current_cost: float = field(init=False, default=0.0)
+    step_count: int = field(init=False, default=0)
+    cumulative_reward: float = field(init=False, default=0.0)
+    best_score: float = field(init=False, default=0.0)
+    done: bool = field(init=False, default=False)
+    last_action_error: str | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
-        self.state: CircuitState | None = None
+        self.tasks = self._normalize_tasks(self.tasks)
 
     @property
     def is_done(self) -> bool:
-        return self.state is not None and self.state.done
+        return self.task is not None and self.done
 
-    def reset(self) -> CircuitObservation:
-        self.state = CircuitState(
-            task_id=self.task["task_id"],
-            circuit_type=self.task["circuit_type"],
-            current_r_ohms=float(self.task["initial_r_ohms"]),
-            current_c_farads=float(self.task["initial_c_farads"]),
-            current_hz=0.0,
-            target_hz=float(self.task["target_hz"]),
-            normalized_error=0.0,
-            current_cost=0.0,
-            step_count=0,
-            max_steps=int(self.task["max_steps"]),
-            cumulative_reward=0.0,
-            best_score=0.0,
-            done=False,
-            min_r_ohms=float(self.task["min_r_ohms"]),
-            max_r_ohms=float(self.task["max_r_ohms"]),
-            min_c_farads=float(self.task["min_c_farads"]),
-            max_c_farads=float(self.task["max_c_farads"]),
-        )
+    def reset(self, task_id: str | None = None) -> CircuitObservation:
+        selected_task = self._select_task(task_id)
+        self.task = selected_task
+        self.current_r_ohms = selected_task.initial_r_ohms
+        self.current_c_farads = selected_task.initial_c_farads
+        self.current_hz = 0.0
+        self.normalized_error = 0.0
+        self.current_cost = 0.0
+        self.step_count = 0
+        self.cumulative_reward = 0.0
+        self.best_score = 0.0
+        self.done = False
+        self.last_action_error = None
         self._refresh_metrics()
-        return self._observation()
+        return self._build_observation()
 
-    def step(self, action: dict[str, Any]) -> CircuitObservation:
-        if self.state is None:
-            raise RuntimeError("Environment must be reset before step")
+    def step(self, action: CircuitAction | dict[str, Any]) -> CircuitObservation:
+        task = self._require_task()
         if self.is_done:
-            return self._observation()
+            raise RuntimeError("episode is already done; call reset() to start a new task")
 
-        action_name = str(action.get("action", ""))
+        if isinstance(action, CircuitAction):
+            action_name = action.action.value
+        else:
+            action_name = str(action.get("action", ""))
         new_r, new_c, error = apply_action(
-            self.state.current_r_ohms,
-            self.state.current_c_farads,
+            self.current_r_ohms,
+            self.current_c_farads,
             action_name,
-            ACTION_SCALE_FACTOR,
-            self.state.min_r_ohms,
-            self.state.max_r_ohms,
-            self.state.min_c_farads,
-            self.state.max_c_farads,
+            self.action_scale_factor,
+            task.min_r_ohms,
+            task.max_r_ohms,
+            task.min_c_farads,
+            task.max_c_farads,
         )
-        if error is not None:
-            self.state.last_action_error = error
-            return self._observation()
-
-        self.state.current_r_ohms = new_r
-        self.state.current_c_farads = new_c
-        self.state.last_action_error = None
-        self.state.step_count += 1
+        self.current_r_ohms = new_r
+        self.current_c_farads = new_c
+        self.last_action_error = error
+        self.step_count += 1
         self._refresh_metrics()
-        return self._observation()
+        return self._build_observation()
+
+    def state(self) -> CircuitState:
+        self._require_task()
+        return self._build_state()
 
     def score(self) -> float:
-        if self.state is None:
-            raise RuntimeError("Environment must be reset before score")
+        self._require_task()
+        return self.best_score
 
-        return self.state.best_score
+    def close(self) -> None:
+        self.task = None
+        self.current_r_ohms = 0.0
+        self.current_c_farads = 0.0
+        self.current_hz = 0.0
+        self.normalized_error = 0.0
+        self.current_cost = 0.0
+        self.step_count = 0
+        self.cumulative_reward = 0.0
+        self.best_score = 0.0
+        self.done = False
+        self.last_action_error = None
 
-    def _observation(self) -> CircuitObservation:
-        assert self.state is not None
+    def _require_task(self) -> CircuitTaskSpec:
+        if self.task is None:
+            raise RuntimeError("environment must be reset before stepping")
+        return self.task
+
+    def _build_observation(self) -> CircuitObservation:
+        task = self._require_task()
         return CircuitObservation(
-            task_id=self.state.task_id,
-            circuit_type=self.state.circuit_type,
-            target_hz=self.state.target_hz,
-            current_r_ohms=self.state.current_r_ohms,
-            current_c_farads=self.state.current_c_farads,
-            current_hz=self.state.current_hz,
-            normalized_error=self.state.normalized_error,
-            current_cost=self.state.current_cost,
-            remaining_steps=self.state.max_steps - self.state.step_count,
-            last_action_error=self.state.last_action_error,
+            task_id=task.task_id,
+            circuit_type=task.circuit_type,
+            target_hz=task.target_hz,
+            current_r_ohms=self.current_r_ohms,
+            current_c_farads=self.current_c_farads,
+            current_hz=self.current_hz,
+            normalized_error=self.normalized_error,
+            current_cost=self.current_cost,
+            remaining_steps=task.max_steps - self.step_count,
+            last_action_error=self.last_action_error,
         )
 
-    def _success_tolerance_ratio(self) -> float:
-        return SUCCESS_TOLERANCE
+    def _build_state(self) -> CircuitState:
+        task = self._require_task()
+        return CircuitState(
+            task_id=task.task_id,
+            step_count=self.step_count,
+            cumulative_reward=self.cumulative_reward,
+            best_score=self.best_score,
+            done=self.done,
+            current_r_ohms=self.current_r_ohms,
+            current_c_farads=self.current_c_farads,
+            current_hz=self.current_hz,
+        )
 
     def _refresh_metrics(self) -> None:
-        assert self.state is not None
+        task = self._require_task()
         evaluation = evaluate_circuit_state(
-            self.state.current_r_ohms,
-            self.state.current_c_farads,
-            self.state.target_hz,
-            self.state.step_count,
-            self.state.max_steps,
-            self._success_tolerance_ratio(),
-            self.state.min_r_ohms,
-            self.state.max_r_ohms,
-            self.state.min_c_farads,
-            self.state.max_c_farads,
+            self.current_r_ohms,
+            self.current_c_farads,
+            task.target_hz,
+            self.step_count,
+            task.max_steps,
+            SUCCESS_TOLERANCE,
+            task.min_r_ohms,
+            task.max_r_ohms,
+            task.min_c_farads,
+            task.max_c_farads,
         )
-        self.state.current_hz = float(evaluation["current_hz"])
-        self.state.normalized_error = float(evaluation["normalized_error"])
-        self.state.current_cost = float(evaluation["normalized_cost"])
-        self.state.done = bool(evaluation["done"])
-        if self.state.step_count > 0:
+        self.current_hz = float(evaluation["current_hz"])
+        self.normalized_error = float(evaluation["normalized_error"])
+        self.current_cost = float(evaluation["normalized_cost"])
+        self.done = bool(evaluation["done"])
+        if self.step_count > 0:
             current_reward = float(evaluation["reward"])
-            self.state.cumulative_reward += current_reward
-            self.state.best_score = max(self.state.best_score, current_reward)
+            self.cumulative_reward += current_reward
+            self.best_score = max(self.best_score, current_reward)
+
+    def _select_task(self, task_id: str | None) -> CircuitTaskSpec:
+        if task_id is None:
+            if len(self.tasks) != 1:
+                raise ValueError("task_id is required when multiple tasks are available")
+            return next(iter(self.tasks.values()))
+        try:
+            return self.tasks[task_id]
+        except KeyError as exc:
+            raise KeyError(f"unknown task_id: {task_id}") from exc
+
+    @staticmethod
+    def _normalize_tasks(
+        tasks: Mapping[str, CircuitTaskSpec | dict[str, Any]] | CircuitTaskSpec | dict[str, Any],
+    ) -> dict[str, CircuitTaskSpec]:
+        if isinstance(tasks, CircuitTaskSpec):
+            return {tasks.task_id: tasks}
+        if isinstance(tasks, Mapping) and "task_id" in tasks:
+            spec = CircuitTaskSpec.model_validate(tasks)
+            return {spec.task_id: spec}
+
+        registry: dict[str, CircuitTaskSpec] = {}
+        assert isinstance(tasks, Mapping)
+        for task_id, task in tasks.items():
+            spec = task if isinstance(task, CircuitTaskSpec) else CircuitTaskSpec.model_validate(task)
+            registry[task_id] = spec
+        return registry

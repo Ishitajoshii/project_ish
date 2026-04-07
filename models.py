@@ -41,26 +41,16 @@ class CircuitObservation(BaseModel):
 
 
 class CircuitState(BaseModel):
-    """Internal environment state for deterministic stepping and scoring."""
+    """Typed episode state summary."""
 
     task_id: str
-    circuit_type: str
-    current_r_ohms: float
-    current_c_farads: float
-    current_hz: float
-    target_hz: float
-    normalized_error: float
-    current_cost: float
     step_count: int
-    max_steps: int
     cumulative_reward: float
     best_score: float
     done: bool
-    min_r_ohms: float
-    max_r_ohms: float
-    min_c_farads: float
-    max_c_farads: float
-    last_action_error: str | None = None
+    current_r_ohms: float | None = None
+    current_c_farads: float | None = None
+    current_hz: float | None = None
 
 
 class CircuitTaskSpec(BaseModel):

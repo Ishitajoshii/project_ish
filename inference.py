@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from models import CircuitAction
 from server.environment import CircuitEnvironment
 from server.task_loader import list_task_paths, load_task
 
@@ -13,14 +14,14 @@ def run_inference(task_file: str) -> dict:
     """Run a deterministic heuristic and return evaluator payload."""
 
     task = load_task(task_file)
-    env = CircuitEnvironment(task)
-    obs = env.reset()
+    env = CircuitEnvironment({task["task_id"]: task})
+    obs = env.reset(task["task_id"])
 
     # Minimal deterministic policy: adjust R in the direction that moves cutoff
     # frequency toward the target.
     while not env.is_done:
         action = "r_up" if obs.current_hz > task["target_hz"] else "r_down"
-        obs = env.step({"action": action})
+        obs = env.step(CircuitAction(action=action))
 
     score = env.score()
     return {

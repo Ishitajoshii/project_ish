@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from typing import Any
 
+from models import CircuitAction
 from server.environment import CircuitEnvironment
 from server.simulator import valid_actions
 
@@ -13,23 +14,23 @@ def random_baseline(task: dict[str, Any], seed: int = 0) -> float:
     """Run random actions for one episode and return final score."""
 
     random.seed(seed)
-    env = CircuitEnvironment(task)
-    env.reset()
+    env = CircuitEnvironment({task["task_id"]: task})
+    env.reset(task["task_id"])
     for _ in range(task["max_steps"]):
         if env.is_done:
             break
-        env.step({"action": random.choice(valid_actions())})
+        env.step(CircuitAction(action=random.choice(valid_actions())))
     return env.score()
 
 
 def heuristic_baseline(task: dict[str, Any]) -> float:
     """Use frequency-direction heuristic to iteratively tune resistor value."""
 
-    env = CircuitEnvironment(task)
-    obs = env.reset()
+    env = CircuitEnvironment({task["task_id"]: task})
+    obs = env.reset(task["task_id"])
     while not env.is_done:
         action = "r_up" if obs.current_hz > task["target_hz"] else "r_down"
-        obs = env.step({"action": action})
+        obs = env.step(CircuitAction(action=action))
     return env.score()
 
 
@@ -38,11 +39,11 @@ def brute_force_baseline(task: dict[str, Any]) -> float:
 
     best = 0.0
     for action in ("r_up", "r_down", "c_up", "c_down"):
-        env = CircuitEnvironment(task)
-        env.reset()
+        env = CircuitEnvironment({task["task_id"]: task})
+        env.reset(task["task_id"])
         for _ in range(task["max_steps"]):
             if env.is_done:
                 break
-            env.step({"action": action})
+            env.step(CircuitAction(action=action))
         best = max(best, env.score())
     return best
