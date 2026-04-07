@@ -28,7 +28,7 @@ def test_invalid_action_reports_last_action_error():
 
     obs = env.step({"action": "nope"})
 
-    assert obs.last_action_error == "Unsupported action: nope"
+    assert obs.last_action_error == "invalid action: nope"
     assert obs.remaining_steps == 8
 
 
