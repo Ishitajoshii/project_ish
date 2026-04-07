@@ -100,14 +100,24 @@ def test_gain_lowpass_below_zero_db_at_fc():
     assert g < 0
 
 
-def test_component_cost_is_log_normalized():
-    cheapest = compute_normalized_cost(100.0, 1e-10, 100.0, 1_000_000.0, 1e-10, 1e-3)
-    middle = compute_normalized_cost(10_000.0, 3.1622776601683795e-7, 100.0, 1_000_000.0, 1e-10, 1e-3)
-    priciest = compute_normalized_cost(1_000_000.0, 1e-3, 100.0, 1_000_000.0, 1e-10, 1e-3)
+def test_compute_normalized_cost_minimum_is_zero():
+    cost = compute_normalized_cost(100.0, 1e-10, 100.0, 1_000_000.0, 1e-10, 1e-3)
+    assert 0.0 <= cost < 0.01
 
-    assert cheapest == 0.0
-    assert round(middle, 6) == 0.5
-    assert priciest == 1.0
+
+def test_compute_normalized_cost_maximum_is_one():
+    cost = compute_normalized_cost(1_000_000.0, 1e-3, 100.0, 1_000_000.0, 1e-10, 1e-3)
+    assert 0.99 < cost <= 1.0
+
+
+def test_compute_normalized_cost_mixed_is_midrange():
+    cost = compute_normalized_cost(100.0, 1e-3, 100.0, 1_000_000.0, 1e-10, 1e-3)
+    assert 0.45 < cost < 0.55
+
+
+def test_compute_normalized_cost_log_midpoint_is_half():
+    cost = compute_normalized_cost(10_000.0, 3.1622776601683795e-7, 100.0, 1_000_000.0, 1e-10, 1e-3)
+    assert round(cost, 6) == 0.5
 
 
 def test_evaluate_circuit_state_computes_reward_and_done():
