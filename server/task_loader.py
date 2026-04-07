@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from server.grader import SUCCESS_TOLERANCE, WEIGHT_COST, WEIGHT_STEP
+from server.simulator import SUCCESS_TOLERANCE, WEIGHT_COST, WEIGHT_STEP
 
 TASKS_DIR = Path(__file__).resolve().parents[1] / "tasks"
 

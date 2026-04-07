@@ -6,8 +6,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from models import CircuitObservation, CircuitState
-from server.grader import SUCCESS_TOLERANCE, normalized_score
-from server.simulator import apply_action, component_cost, cutoff_frequency_hz, gain_db
+from server.simulator import (
+    ACTION_SCALE_FACTOR,
+    SUCCESS_TOLERANCE,
+    apply_action,
+    evaluate_circuit_state,
+)
 
 
 @dataclass
@@ -52,19 +56,23 @@ class CircuitEnvironment:
         if self.is_done:
             return self._observation()
 
-        components = {
-            "R": self.state.current_r_ohms,
-            "C": self.state.current_c_farads,
-        }
         action_name = str(action.get("action", ""))
-        try:
-            updated = apply_action(components, action_name, self._bounds())
-        except ValueError as exc:
-            self.state.last_action_error = str(exc)
+        new_r, new_c, error = apply_action(
+            self.state.current_r_ohms,
+            self.state.current_c_farads,
+            action_name,
+            ACTION_SCALE_FACTOR,
+            self.state.min_r_ohms,
+            self.state.max_r_ohms,
+            self.state.min_c_farads,
+            self.state.max_c_farads,
+        )
+        if error is not None:
+            self.state.last_action_error = error
             return self._observation()
 
-        self.state.current_r_ohms = updated["R"]
-        self.state.current_c_farads = updated["C"]
+        self.state.current_r_ohms = new_r
+        self.state.current_c_farads = new_c
         self.state.last_action_error = None
         self.state.step_count += 1
         self._refresh_metrics()
@@ -92,42 +100,28 @@ class CircuitEnvironment:
             last_action_error=self.state.last_action_error,
         )
 
-    def _bounds(self) -> dict[str, tuple[float, float]]:
-        assert self.state is not None
-        return {
-            "R": (self.state.min_r_ohms, self.state.max_r_ohms),
-            "C": (self.state.min_c_farads, self.state.max_c_farads),
-        }
-
     def _success_tolerance_ratio(self) -> float:
         return SUCCESS_TOLERANCE
 
     def _refresh_metrics(self) -> None:
         assert self.state is not None
-        components = {
-            "R": self.state.current_r_ohms,
-            "C": self.state.current_c_farads,
-        }
-        self.state.current_output_hz = cutoff_frequency_hz(components)
-        self.state.normalized_error = abs(self.state.current_output_hz - self.state.target_hz) / max(
+        evaluation = evaluate_circuit_state(
+            self.state.current_r_ohms,
+            self.state.current_c_farads,
             self.state.target_hz,
-            1e-9,
+            self.state.step_count,
+            self.state.max_steps,
+            self._success_tolerance_ratio(),
+            self.state.min_r_ohms,
+            self.state.max_r_ohms,
+            self.state.min_c_farads,
+            self.state.max_c_farads,
         )
-        self.state.current_cost = component_cost(components, self._bounds())
-        self.state.done = (
-            self.state.normalized_error <= self._success_tolerance_ratio()
-            or self.state.step_count >= self.state.max_steps
-        )
+        self.state.current_output_hz = float(evaluation["current_hz"])
+        self.state.normalized_error = float(evaluation["normalized_error"])
+        self.state.current_cost = float(evaluation["normalized_cost"])
+        self.state.done = bool(evaluation["done"])
         if self.state.step_count > 0:
-            current_reward = normalized_score(
-                self.state.normalized_error,
-                self.state.current_cost,
-                self.state.step_count,
-                self.state.max_steps,
-            )
+            current_reward = float(evaluation["reward"])
             self.state.cumulative_reward += current_reward
             self.state.best_score = max(self.state.best_score, current_reward)
-
-        # Gain is still a useful derived metric for UI/debugging callers, so keep
-        # the circuit-type mapping exercised during every state refresh.
-        gain_db(self.state.circuit_type, components, self.state.target_hz)
