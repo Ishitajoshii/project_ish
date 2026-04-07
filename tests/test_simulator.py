@@ -33,6 +33,54 @@ def test_apply_action_updates_component_multiplicatively():
     assert new_c == 1e-7
 
 
+def test_apply_action_c_down_changes_only_c():
+    new_r, new_c, error = apply_action(
+        1000.0,
+        1e-6,
+        "c_down",
+        ACTION_SCALE_FACTOR,
+        100.0,
+        1_000_000.0,
+        1e-9,
+        1e-3,
+    )
+    assert error is None
+    assert new_r == 1000.0
+    assert new_c == 1e-6 / ACTION_SCALE_FACTOR
+
+
+def test_apply_action_clamps_to_bounds():
+    new_r, new_c, error = apply_action(
+        1_000_000.0,
+        1e-9,
+        "r_up",
+        ACTION_SCALE_FACTOR,
+        100.0,
+        1_000_000.0,
+        1e-9,
+        1e-3,
+    )
+    assert error is None
+    assert new_r == 1_000_000.0
+    assert new_c == 1e-9
+
+
+def test_apply_action_invalid_action_returns_originals_and_error():
+    new_r, new_c, error = apply_action(
+        1000.0,
+        1e-6,
+        "foo",
+        ACTION_SCALE_FACTOR,
+        100.0,
+        1_000_000.0,
+        1e-9,
+        1e-3,
+    )
+    assert new_r == 1000.0
+    assert new_c == 1e-6
+    assert error == "invalid action: foo"
+
+
 def test_compute_cutoff_hz_basic():
     hz = compute_cutoff_hz(1000.0, 1e-6)
     assert 159.0 < hz < 159.2

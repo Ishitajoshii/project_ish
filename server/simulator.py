@@ -53,15 +53,24 @@ def apply_action(
 ) -> tuple[float, float, str | None]:
     """Apply one action, clamp the result, and return the updated RC pair."""
 
+    new_r = r_ohms
+    new_c = c_farads
+    error = None
+
     if action == "r_up":
-        return clamp_value(r_ohms * scale_factor, min_r_ohms, max_r_ohms), c_farads, None
-    if action == "r_down":
-        return clamp_value(r_ohms / scale_factor, min_r_ohms, max_r_ohms), c_farads, None
-    if action == "c_up":
-        return r_ohms, clamp_value(c_farads * scale_factor, min_c_farads, max_c_farads), None
-    if action == "c_down":
-        return r_ohms, clamp_value(c_farads / scale_factor, min_c_farads, max_c_farads), None
-    return r_ohms, c_farads, f"Unsupported action: {action}"
+        new_r = r_ohms * scale_factor
+    elif action == "r_down":
+        new_r = r_ohms / scale_factor
+    elif action == "c_up":
+        new_c = c_farads * scale_factor
+    elif action == "c_down":
+        new_c = c_farads / scale_factor
+    else:
+        return r_ohms, c_farads, f"unsupported action: {action}"
+
+    new_r = clamp_value(new_r, min_r_ohms, max_r_ohms)
+    new_c = clamp_value(new_c, min_c_farads, max_c_farads)
+    return new_r, new_c, error
 
 
 def compute_normalized_error(current_hz: float, target_hz: float) -> float:
