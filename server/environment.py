@@ -10,6 +10,7 @@ from server.simulator import (
     ACTION_SCALE_FACTOR,
     SUCCESS_TOLERANCE,
     apply_action,
+    clamp_value,
     evaluate_circuit_state,
 )
 
@@ -131,7 +132,7 @@ class CircuitEnvironment:
 
     def score(self) -> float:
         self._require_task()
-        return self.best_score
+        return clamp_value(self.best_score, 0.0, 1.0)
 
     def close(self) -> None:
         self.task = None
