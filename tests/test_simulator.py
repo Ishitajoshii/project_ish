@@ -1,5 +1,7 @@
 """Quick confidence checks for simulator equations and action updates."""
 
+import pytest
+
 from server.simulator import (
     ACTION_SCALE_FACTOR,
     SUCCESS_TOLERANCE,
@@ -31,9 +33,17 @@ def test_apply_action_updates_component_multiplicatively():
     assert new_c == 1e-7
 
 
-def test_cutoff_frequency_positive():
-    fc = compute_cutoff_hz(1000.0, 1e-7)
-    assert fc > 0
+def test_compute_cutoff_hz_basic():
+    hz = compute_cutoff_hz(1000.0, 1e-6)
+    assert 159.0 < hz < 159.2
+
+
+def test_compute_cutoff_hz_rejects_non_positive_inputs():
+    with pytest.raises(ValueError, match="r_ohms must be > 0"):
+        compute_cutoff_hz(0.0, 1e-6)
+
+    with pytest.raises(ValueError, match="c_farads must be > 0"):
+        compute_cutoff_hz(1000.0, 0.0)
 
 
 def test_gain_lowpass_below_zero_db_at_fc():

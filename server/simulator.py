@@ -34,9 +34,11 @@ def clamp_value(value: float, min_value: float, max_value: float) -> float:
 def compute_cutoff_hz(r_ohms: float, c_farads: float) -> float:
     """Return RC cutoff frequency using 1 / (2 * pi * R * C)."""
 
-    safe_r = max(r_ohms, 1e-12)
-    safe_c = max(c_farads, 1e-12)
-    return 1.0 / (2.0 * math.pi * safe_r * safe_c)
+    if r_ohms <= 0:
+        raise ValueError("r_ohms must be > 0")
+    if c_farads <= 0:
+        raise ValueError("c_farads must be > 0")
+    return 1.0 / (2.0 * math.pi * r_ohms * c_farads)
 
 
 def apply_action(
