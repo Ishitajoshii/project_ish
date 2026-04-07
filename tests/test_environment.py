@@ -58,7 +58,7 @@ def test_low_cost_task_starts_expensive_and_can_improve_by_moving_r_down():
     env = CircuitEnvironment(load_task("tasks/lp_2khz_low_cost.json"))
     start = env.reset()
 
-    assert start.current_output_hz < start.target_hz
+    assert start.current_hz < start.target_hz
     initial_cost = start.current_cost
 
     latest = start

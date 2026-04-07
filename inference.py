@@ -19,7 +19,7 @@ def run_inference(task_file: str) -> dict:
     # Minimal deterministic policy: adjust R in the direction that moves cutoff
     # frequency toward the target.
     while not env.is_done:
-        action = "r_up" if obs.current_output_hz > task["target_hz"] else "r_down"
+        action = "r_up" if obs.current_hz > task["target_hz"] else "r_down"
         obs = env.step({"action": action})
 
     score = env.score()
@@ -27,10 +27,10 @@ def run_inference(task_file: str) -> dict:
         "task_id": task["task_id"],
         "score": score,
         "details": {
-            "final_output_hz": obs.current_output_hz,
+            "final_output_hz": obs.current_hz,
             "normalized_error": obs.normalized_error,
             "cost": obs.current_cost,
-            "solved": obs.solved,
+            "solved": env.is_done and obs.normalized_error <= 0.02,
         },
     }
 

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from models import CircuitTaskSpec
 from server.simulator import SUCCESS_TOLERANCE, WEIGHT_COST, WEIGHT_STEP
 
 TASKS_DIR = Path(__file__).resolve().parents[1] / "tasks"
@@ -71,6 +72,8 @@ def load_task(path: str | Path) -> dict[str, Any]:
     task_path = Path(path)
     with task_path.open("r", encoding="utf-8") as f:
         task = json.load(f)
+    typed_task = CircuitTaskSpec.model_validate(task)
+    task = typed_task.model_dump()
     _validate_task(task, task_path)
     return task
 

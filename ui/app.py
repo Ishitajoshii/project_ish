@@ -19,8 +19,8 @@ def do_step(action: str):
     obs = _ENV.step({"action": action})
     return (
         (
-            f"fc={obs.current_output_hz:.2f}Hz, error={obs.normalized_error:.3f}, "
-            f"cost={obs.current_cost:.3f}, solved={obs.solved}"
+            f"fc={obs.current_hz:.2f}Hz, error={obs.normalized_error:.3f}, "
+            f"cost={obs.current_cost:.3f}, done={_ENV.is_done}"
         ),
         _ENV.score(),
         _ENV.is_done,

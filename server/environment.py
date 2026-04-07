@@ -33,7 +33,7 @@ class CircuitEnvironment:
             circuit_type=self.task["circuit_type"],
             current_r_ohms=float(self.task["initial_r_ohms"]),
             current_c_farads=float(self.task["initial_c_farads"]),
-            current_output_hz=0.0,
+            current_hz=0.0,
             target_hz=float(self.task["target_hz"]),
             normalized_error=0.0,
             current_cost=0.0,
@@ -92,11 +92,10 @@ class CircuitEnvironment:
             target_hz=self.state.target_hz,
             current_r_ohms=self.state.current_r_ohms,
             current_c_farads=self.state.current_c_farads,
-            current_output_hz=self.state.current_output_hz,
+            current_hz=self.state.current_hz,
             normalized_error=self.state.normalized_error,
             current_cost=self.state.current_cost,
             remaining_steps=self.state.max_steps - self.state.step_count,
-            solved=self.state.done and self.state.normalized_error <= self._success_tolerance_ratio(),
             last_action_error=self.state.last_action_error,
         )
 
@@ -117,7 +116,7 @@ class CircuitEnvironment:
             self.state.min_c_farads,
             self.state.max_c_farads,
         )
-        self.state.current_output_hz = float(evaluation["current_hz"])
+        self.state.current_hz = float(evaluation["current_hz"])
         self.state.normalized_error = float(evaluation["normalized_error"])
         self.state.current_cost = float(evaluation["normalized_cost"])
         self.state.done = bool(evaluation["done"])
