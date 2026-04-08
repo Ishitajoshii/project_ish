@@ -38,8 +38,8 @@ def build_baseline_result(
     steps_used: int,
     evaluations: int | None,
     achieved_hz: float,
-    current_r_ohms: float,
-    current_c_farads: float,
+    best_r_ohms: float,
+    best_c_farads: float,
     normalized_error: float,
     normalized_cost: float,
 ) -> dict[str, Any]:
@@ -53,8 +53,8 @@ def build_baseline_result(
         "steps_used": steps_used,
         "evaluations": evaluations,
         "achieved_hz": achieved_hz,
-        "current_r_ohms": current_r_ohms,
-        "current_c_farads": current_c_farads,
+        "best_r_ohms": best_r_ohms,
+        "best_c_farads": best_c_farads,
         "normalized_error": normalized_error,
         "normalized_cost": normalized_cost,
     }
@@ -85,11 +85,11 @@ def run_baseline_episode(
         success=is_success(score),
         steps_used=final_state.step_count,
         evaluations=None,
-        achieved_hz=observation.current_hz,
-        current_r_ohms=observation.current_r_ohms,
-        current_c_farads=observation.current_c_farads,
-        normalized_error=observation.normalized_error,
-        normalized_cost=observation.current_cost,
+        achieved_hz=float(final_state.best_hz),
+        best_r_ohms=float(final_state.best_r_ohms),
+        best_c_farads=float(final_state.best_c_farads),
+        normalized_error=float(final_state.best_normalized_error),
+        normalized_cost=float(final_state.best_normalized_cost),
     )
 
 
@@ -176,8 +176,8 @@ def run_bruteforce_baseline(
         steps_used=0,
         evaluations=evaluations,
         achieved_hz=float(best_result["current_hz"]),
-        current_r_ohms=best_r,
-        current_c_farads=best_c,
+        best_r_ohms=best_r,
+        best_c_farads=best_c,
         normalized_error=float(best_result["normalized_error"]),
         normalized_cost=float(best_result["normalized_cost"]),
     )

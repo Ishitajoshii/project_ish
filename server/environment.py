@@ -30,6 +30,11 @@ class CircuitEnvironment:
     step_count: int = field(init=False, default=0)
     cumulative_reward: float = field(init=False, default=0.0)
     best_score: float = field(init=False, default=0.0)
+    best_r_ohms: float = field(init=False, default=0.0)
+    best_c_farads: float = field(init=False, default=0.0)
+    best_hz: float = field(init=False, default=0.0)
+    best_normalized_error: float = field(init=False, default=0.0)
+    best_normalized_cost: float = field(init=False, default=0.0)
     done: bool = field(init=False, default=False)
     last_action_error: str | None = field(init=False, default=None)
 
@@ -68,6 +73,13 @@ class CircuitEnvironment:
         self.current_hz = float(metrics["current_hz"])
         self.normalized_error = float(metrics["normalized_error"])
         self.current_cost = float(metrics["normalized_cost"])
+        self._set_best_state(
+            r_ohms=self.current_r_ohms,
+            c_farads=self.current_c_farads,
+            current_hz=self.current_hz,
+            normalized_error=self.normalized_error,
+            normalized_cost=self.current_cost,
+        )
         return self._build_observation(
             current_hz=self.current_hz,
             normalized_error=self.normalized_error,
@@ -116,7 +128,15 @@ class CircuitEnvironment:
         self.normalized_error = float(metrics["normalized_error"])
         self.current_cost = float(metrics["normalized_cost"])
         self.cumulative_reward += reward
-        self.best_score = max(self.best_score, reward)
+        if reward >= self.best_score:
+            self.best_score = reward
+            self._set_best_state(
+                r_ohms=self.current_r_ohms,
+                c_farads=self.current_c_farads,
+                current_hz=self.current_hz,
+                normalized_error=self.normalized_error,
+                normalized_cost=self.current_cost,
+            )
         self.done = done
 
         observation = self._build_observation(
@@ -144,6 +164,11 @@ class CircuitEnvironment:
         self.step_count = 0
         self.cumulative_reward = 0.0
         self.best_score = 0.0
+        self.best_r_ohms = 0.0
+        self.best_c_farads = 0.0
+        self.best_hz = 0.0
+        self.best_normalized_error = 0.0
+        self.best_normalized_cost = 0.0
         self.done = False
         self.last_action_error = None
 
@@ -183,7 +208,27 @@ class CircuitEnvironment:
             current_r_ohms=self.current_r_ohms,
             current_c_farads=self.current_c_farads,
             current_hz=self.current_hz,
+            best_r_ohms=self.best_r_ohms,
+            best_c_farads=self.best_c_farads,
+            best_hz=self.best_hz,
+            best_normalized_error=self.best_normalized_error,
+            best_normalized_cost=self.best_normalized_cost,
         )
+
+    def _set_best_state(
+        self,
+        *,
+        r_ohms: float,
+        c_farads: float,
+        current_hz: float,
+        normalized_error: float,
+        normalized_cost: float,
+    ) -> None:
+        self.best_r_ohms = r_ohms
+        self.best_c_farads = c_farads
+        self.best_hz = current_hz
+        self.best_normalized_error = normalized_error
+        self.best_normalized_cost = normalized_cost
 
     def _select_task(self, task_id: str) -> CircuitTaskSpec:
         try:

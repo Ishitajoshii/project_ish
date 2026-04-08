@@ -33,11 +33,16 @@ def test_reset_initializes_clean_state():
     task = load_task("tasks/lp_1khz_budget.json")
     env = CircuitEnvironment({task.task_id: task})
 
-    env.reset(task.task_id)
+    obs = env.reset(task.task_id)
 
     assert env.step_count == 0
     assert env.cumulative_reward == 0.0
     assert env.best_score == 0.0
+    assert env.best_r_ohms == obs.current_r_ohms
+    assert env.best_c_farads == obs.current_c_farads
+    assert env.best_hz == obs.current_hz
+    assert env.best_normalized_error == obs.normalized_error
+    assert env.best_normalized_cost == obs.current_cost
     assert env.done is False
 
 
@@ -92,6 +97,23 @@ def test_final_score_uses_best_reward_seen():
     assert first_done is False
     assert first_reward > second_reward
     assert env.score() == first_reward
+    assert env.best_r_ohms == task.initial_r_ohms * env.action_scale_factor
+    assert env.best_c_farads == task.initial_c_farads
+
+
+def test_state_exposes_best_state_snapshot():
+    task = load_task("tasks/lp_1khz_budget.json")
+    env = CircuitEnvironment({task.task_id: task})
+    initial = env.reset(task.task_id)
+
+    env.step(CircuitAction(action="r_up"))
+    state = env.state()
+
+    assert state.best_r_ohms == initial.current_r_ohms * env.action_scale_factor
+    assert state.best_c_farads == initial.current_c_farads
+    assert state.best_hz is not None
+    assert state.best_normalized_error is not None
+    assert state.best_normalized_cost is not None
 
 
 def test_low_cost_task_starts_expensive_and_can_improve_by_moving_r_down():
@@ -121,6 +143,8 @@ def test_state_returns_typed_episode_summary():
     assert state.step_count == 1
     assert state.best_score == env.score()
     assert state.done is False
+    assert state.best_r_ohms is not None
+    assert state.best_c_farads is not None
 
 
 def test_step_before_reset_raises_clear_error():

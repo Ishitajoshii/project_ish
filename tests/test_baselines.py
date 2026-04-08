@@ -47,8 +47,8 @@ def test_heuristic_baseline_returns_shared_payload_fields():
     assert result["task_id"] == task.task_id
     assert result["steps_used"] <= task.max_steps
     assert result["evaluations"] is None
-    assert task.min_r_ohms <= result["current_r_ohms"] <= task.max_r_ohms
-    assert task.min_c_farads <= result["current_c_farads"] <= task.max_c_farads
+    assert task.min_r_ohms <= result["best_r_ohms"] <= task.max_r_ohms
+    assert task.min_c_farads <= result["best_c_farads"] <= task.max_c_farads
     assert 0.0 <= result["score"] <= 1.0
     assert 0.0 <= result["normalized_cost"] <= 1.0
 
@@ -62,8 +62,8 @@ def test_bruteforce_baseline_reports_grid_evaluations_and_best_candidate():
     assert result["task_id"] == task.task_id
     assert result["evaluations"] == 20
     assert result["steps_used"] == 0
-    assert task.min_r_ohms <= result["current_r_ohms"] <= task.max_r_ohms
-    assert task.min_c_farads <= result["current_c_farads"] <= task.max_c_farads
+    assert task.min_r_ohms <= result["best_r_ohms"] <= task.max_r_ohms
+    assert task.min_c_farads <= result["best_c_farads"] <= task.max_c_farads
     assert 0.0 <= result["score"] <= 1.0
     assert 0.0 <= result["normalized_error"]
 
