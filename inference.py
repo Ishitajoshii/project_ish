@@ -3,142 +3,43 @@
 from __future__ import annotations
 
 import argparse
-import os
-from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Literal
 
 from dotenv import load_dotenv
-from openai import OpenAI
 
-from models import CircuitAction, CircuitObservation
+from models import CircuitAction
 from server.environment import CircuitEnvironment
 from server.grader import is_success
+from server.agent_harness import (
+    HARNESS_BACKEND_NAME,
+    AgentHarness,
+    HarnessConfig,
+    build_model_client,
+    load_harness_config,
+)
+from server.policy_agent import AGENT_NAME as POLICY_AGENT_NAME
+from server.policy_agent import TabularValueIterationAgent
 from server.task_loader import get_task_ids_in_order, load_task_file, load_tasks
 
 BENCHMARK_NAME = "circuitrl"
 VALID_ACTIONS = ("r_up", "r_down", "c_up", "c_down")
+AgentBackend = Literal["llm", "policy"]
+InferenceConfig = HarnessConfig
 
 load_dotenv()
-
-
-@dataclass(frozen=True)
-class InferenceConfig:
-    """Runtime configuration read from environment variables."""
-
-    api_base_url: str
-    model_name: str
-    hf_token: str
-    image_name: str | None = None
 
 
 def load_inference_config() -> InferenceConfig:
     """Read inference configuration from environment variables."""
 
-    api_base_url = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-    model_name = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-7B-Instruct-AWQ"
-    if "api.openai.com" in api_base_url:
-        hf_token = (
-            os.getenv("OPENAI_API_KEY")
-            or os.getenv("OPEN_AI_API_KEY")
-            or os.getenv("API_KEY")
-            or os.getenv("HF_TOKEN")
-        )
-    else:
-        hf_token = (
-            os.getenv("HF_TOKEN")
-            or os.getenv("API_KEY")
-            or os.getenv("OPENAI_API_KEY")
-            or os.getenv("OPEN_AI_API_KEY")
-        )
-    image_name = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
-
-    if not hf_token:
-        raise RuntimeError("HF_TOKEN is required for inference")
-
-    return InferenceConfig(
-        api_base_url=api_base_url,
-        model_name=model_name,
-        hf_token=hf_token,
-        image_name=image_name,
-    )
+    return load_harness_config()
 
 
-def build_openai_client(config: InferenceConfig) -> OpenAI:
-    """Create the OpenAI-compatible client used for evaluator inference."""
+def build_inference_client(config: InferenceConfig) -> Any:
+    """Create the model client used by the evaluator loop."""
 
-    return OpenAI(
-        base_url=config.api_base_url,
-        api_key=config.hf_token,
-    )
-
-
-def _build_action_prompt(observation: CircuitObservation) -> list[dict[str, str]]:
-    """Build a compact deterministic prompt for action selection."""
-
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You are tuning an RC circuit. "
-                "Reply with exactly one token from this set and nothing else: "
-                "r_up | r_down | c_up | c_down."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"task_id={observation.task_id}\n"
-                f"target_hz={observation.target_hz}\n"
-                f"current_hz={observation.current_hz}\n"
-                f"current_r_ohms={observation.current_r_ohms}\n"
-                f"current_c_farads={observation.current_c_farads}\n"
-                f"normalized_error={observation.normalized_error}\n"
-                f"current_cost={observation.current_cost}\n"
-                f"remaining_steps={observation.remaining_steps}\n"
-                f"last_action_error={observation.last_action_error or 'null'}"
-            ),
-        },
-    ]
-
-
-def _extract_action(content: str) -> str:
-    """Parse one valid action token from model output."""
-
-    cleaned = content.strip().lower()
-    if cleaned in VALID_ACTIONS:
-        return cleaned
-
-    for action in VALID_ACTIONS:
-        if action in cleaned:
-            return action
-
-    raise ValueError(f"model returned invalid action: {content!r}")
-
-
-def _fallback_action(observation: CircuitObservation) -> str:
-    """Use a deterministic fallback if the model response is missing or malformed."""
-
-    return "r_up" if observation.current_hz > observation.target_hz else "r_down"
-
-
-def choose_model_action(
-    client: OpenAI,
-    config: InferenceConfig,
-    observation: CircuitObservation,
-) -> str:
-    """Ask the configured model for the next discrete circuit action."""
-
-    try:
-        response = client.chat.completions.create(
-            model=config.model_name,
-            messages=_build_action_prompt(observation),
-            temperature=0.0,
-            max_completion_tokens=16,
-        )
-        content = response.choices[0].message.content or ""
-        return _extract_action(content)
-    except Exception:
-        return _fallback_action(observation)
+    return build_model_client(config)
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -173,83 +74,164 @@ def run_inference(
     task_file: str,
     *,
     config: InferenceConfig | None = None,
-    client: OpenAI | None = None,
+    client: Any | None = None,
     log_stdout: bool = False,
-) -> dict:
-    """Run one deterministic policy and return evaluator payload."""
-
-    resolved_config = config or load_inference_config()
-    _client = client or build_openai_client(resolved_config)
+    agent_backend: AgentBackend = "llm",
+    harness_agent: AgentHarness | None = None,
+    policy_agent: TabularValueIterationAgent | None = None,
+) -> dict[str, Any]:
+    """Run one benchmark task with the requested backend and return evaluator payload."""
 
     task = load_task_file(Path(task_file))
     env = CircuitEnvironment({task.task_id: task})
-    obs = env.reset(task.task_id)
-    rewards: list[float] = []
-    steps_taken = 0
     score = 0.0
     success = False
+    rewards: list[float] = []
+    steps_taken = 0
+    model_name = POLICY_AGENT_NAME
+    details: dict[str, Any] = {}
 
-    if log_stdout:
-        log_start(task=task.task_id, env=BENCHMARK_NAME, model=resolved_config.model_name)
-
-    try:
-        while not env.is_done:
-            action = choose_model_action(_client, resolved_config, obs)
-            obs, reward, done = env.step(CircuitAction(action=action))
-            rewards.append(reward)
-            steps_taken += 1
+    if agent_backend == "llm":
+        resolved_config = config or load_inference_config()
+        resolved_client = client or build_inference_client(resolved_config)
+        resolved_agent = harness_agent or AgentHarness(
+            tasks={task.task_id: task},
+            config=resolved_config,
+            client=resolved_client,
+        )
+        model_name = resolved_config.model_name
+        if log_stdout:
+            log_start(task=task.task_id, env=BENCHMARK_NAME, model=model_name)
+        try:
+            result = resolved_agent.run_episode(env, task.task_id)
+            rewards = [step.reward for step in result.trace_steps]
+            steps_taken = len(result.trace_steps)
+            score = result.score
+            success = result.success
             if log_stdout:
-                log_step(
-                    step=steps_taken,
-                    action=action,
-                    reward=reward,
-                    done=done,
-                    error=obs.last_action_error,
-                )
-
-        score = env.score()
-        success = is_success(score)
-        return {
-            "task_id": task.task_id,
-            "score": score,
-            "details": {
-                "final_output_hz": obs.current_hz,
-                "normalized_error": obs.normalized_error,
-                "cost": obs.current_cost,
-                "solved": env.is_done and obs.normalized_error <= 0.02,
-                "model_name": resolved_config.model_name,
+                for index, step in enumerate(result.trace_steps, start=1):
+                    log_step(
+                        step=index,
+                        action=step.action,
+                        reward=step.reward,
+                        done=index == len(result.trace_steps),
+                        error=None,
+                    )
+            details = {
+                "final_output_hz": result.final_observation.current_hz,
+                "normalized_error": result.final_observation.normalized_error,
+                "cost": result.final_observation.current_cost,
+                "solved": result.state.done and result.final_observation.normalized_error <= 0.02,
+                "model_name": model_name,
+                "agent_backend": HARNESS_BACKEND_NAME,
                 "rewards": rewards,
                 "steps": steps_taken,
-            },
-        }
-    finally:
-        if not score and env.task is not None:
+                "simulator_evaluations": result.simulator_evaluations,
+                "trace": [
+                    {
+                        "step": step.step,
+                        "action": step.action,
+                        "model_action": step.model_action,
+                        "selected_by": step.selected_by,
+                        "reward": step.reward,
+                        "best_score_after": step.best_score_after,
+                        "note": step.note,
+                    }
+                    for step in result.trace_steps
+                ],
+            }
+        finally:
+            if not score and env.task is not None:
+                score = env.score()
+                success = is_success(score)
+            if log_stdout:
+                log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+    else:
+        resolved_policy_agent = policy_agent or TabularValueIterationAgent({task.task_id: task})
+        model_name = POLICY_AGENT_NAME
+        if log_stdout:
+            log_start(task=task.task_id, env=BENCHMARK_NAME, model=model_name)
+        try:
+            observation = env.reset(task.task_id)
+            while not env.is_done:
+                action = resolved_policy_agent.choose_action(observation, env.score())
+                observation, reward, done = env.step(CircuitAction(action=action))
+                rewards.append(reward)
+                steps_taken += 1
+                if log_stdout:
+                    log_step(
+                        step=steps_taken,
+                        action=action,
+                        reward=reward,
+                        done=done,
+                        error=observation.last_action_error,
+                    )
+                if done:
+                    break
             score = env.score()
             success = is_success(score)
-        if log_stdout:
-            log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+            details = {
+                "final_output_hz": observation.current_hz,
+                "normalized_error": observation.normalized_error,
+                "cost": observation.current_cost,
+                "solved": env.is_done and observation.normalized_error <= 0.02,
+                "model_name": model_name,
+                "agent_backend": "policy",
+                "rewards": rewards,
+                "steps": steps_taken,
+            }
+        finally:
+            if not score and env.task is not None:
+                score = env.score()
+                success = is_success(score)
+            if log_stdout:
+                log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+
+    return {
+        "task_id": task.task_id,
+        "score": score,
+        "details": details,
+    }
 
 
 def run_all_inference(
     task_dir: str | None = None,
     *,
     config: InferenceConfig | None = None,
-    client: OpenAI | None = None,
+    client: Any | None = None,
     log_stdout: bool = False,
-) -> list[dict]:
+    agent_backend: AgentBackend = "llm",
+) -> list[dict[str, Any]]:
     """Run inference across the deterministic benchmark task set."""
 
-    resolved_config = config or load_inference_config()
-    resolved_client = client or build_openai_client(resolved_config)
     base_dir = Path(task_dir) if task_dir is not None else Path("tasks")
     tasks = load_tasks(base_dir)
     ordered_ids = get_task_ids_in_order(tasks)
+    resolved_config = None
+    resolved_client = None
+    resolved_harness_agent = None
+    resolved_policy_agent = None
+
+    if agent_backend == "llm":
+        resolved_config = config or load_inference_config()
+        resolved_client = client or build_inference_client(resolved_config)
+        resolved_harness_agent = AgentHarness(
+            tasks=tasks,
+            config=resolved_config,
+            client=resolved_client,
+        )
+    else:
+        resolved_policy_agent = TabularValueIterationAgent(tasks)
+
     return [
         run_inference(
             str(base_dir / f"{task_id}.json"),
             config=resolved_config,
             client=resolved_client,
             log_stdout=log_stdout,
+            agent_backend=agent_backend,
+            harness_agent=resolved_harness_agent,
+            policy_agent=resolved_policy_agent,
         )
         for task_id in ordered_ids
     ]
@@ -258,15 +240,34 @@ def run_all_inference(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", help="Path to one task JSON; omit to run all benchmark tasks")
+    parser.add_argument(
+        "--agent-backend",
+        choices=("llm", "policy"),
+        default="llm",
+        help="Use the model-driven harness or the deterministic reference policy backend.",
+    )
     args = parser.parse_args()
 
-    config = load_inference_config()
-    client = build_openai_client(config)
-    results = (
-        [run_inference(args.task, config=config, client=client, log_stdout=True)]
-        if args.task
-        else run_all_inference(config=config, client=client, log_stdout=True)
-    )
+    config = None
+    client = None
+    if args.agent_backend == "llm":
+        config = load_inference_config()
+        client = build_inference_client(config)
+    if args.task:
+        run_inference(
+            args.task,
+            config=config,
+            client=client,
+            log_stdout=True,
+            agent_backend=args.agent_backend,
+        )
+    else:
+        run_all_inference(
+            config=config,
+            client=client,
+            log_stdout=True,
+            agent_backend=args.agent_backend,
+        )
 
 
 if __name__ == "__main__":

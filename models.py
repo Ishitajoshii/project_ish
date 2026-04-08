@@ -40,10 +40,34 @@ class CircuitObservation(BaseModel):
     last_action_error: str | None = None
 
 
+class CircuitReward(BaseModel):
+    """Typed reward payload returned after one environment step."""
+
+    value: float
+    accuracy_score: float
+    cost_efficiency: float
+    step_efficiency: float
+
+
+class CircuitStepInfo(BaseModel):
+    """Supplementary typed info returned alongside one step transition."""
+
+    task_id: str
+    step_count: int
+    best_score: float
+    current_hz: float
+    normalized_error: float
+    current_cost: float
+    success_threshold: float
+    terminated_by: str
+
+
 class CircuitState(BaseModel):
     """Typed episode state summary."""
 
     task_id: str
+    circuit_type: str
+    target_hz: float
     step_count: int
     cumulative_reward: float
     best_score: float
@@ -51,6 +75,8 @@ class CircuitState(BaseModel):
     current_r_ohms: float | None = None
     current_c_farads: float | None = None
     current_hz: float | None = None
+    current_normalized_error: float | None = None
+    current_cost: float | None = None
     best_r_ohms: float | None = None
     best_c_farads: float | None = None
     best_hz: float | None = None

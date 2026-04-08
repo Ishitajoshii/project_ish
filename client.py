@@ -14,8 +14,9 @@ class OpenEnvClient:
 
     base_url: str = "http://127.0.0.1:8000"
 
-    def reset(self, task_path: str) -> dict[str, Any]:
-        resp = httpx.post(f"{self.base_url}/reset", json={"task_path": task_path}, timeout=10)
+    def reset(self, task_id: str | None = None) -> dict[str, Any]:
+        payload = {} if task_id is None else {"task_id": task_id}
+        resp = httpx.post(f"{self.base_url}/reset", json=payload, timeout=10)
         resp.raise_for_status()
         return resp.json()
 

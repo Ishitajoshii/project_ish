@@ -201,6 +201,8 @@ class CircuitEnvironment:
         task = self._require_task()
         return CircuitState(
             task_id=task.task_id,
+            circuit_type=task.circuit_type,
+            target_hz=task.target_hz,
             step_count=self.step_count,
             cumulative_reward=self.cumulative_reward,
             best_score=self.best_score,
@@ -208,6 +210,8 @@ class CircuitEnvironment:
             current_r_ohms=self.current_r_ohms,
             current_c_farads=self.current_c_farads,
             current_hz=self.current_hz,
+            current_normalized_error=self.normalized_error,
+            current_cost=self.current_cost,
             best_r_ohms=self.best_r_ohms,
             best_c_farads=self.best_c_farads,
             best_hz=self.best_hz,

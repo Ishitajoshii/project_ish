@@ -23,6 +23,8 @@ def test_clamp_score_bounds():
 def test_grade_episode_returns_best_score():
     state = CircuitState(
         task_id="lp_1khz_budget",
+        circuit_type="low_pass",
+        target_hz=1000.0,
         step_count=3,
         cumulative_reward=1.7,
         best_score=0.83,
@@ -40,6 +42,8 @@ def test_is_success_uses_threshold():
 def test_grade_task_result_includes_expected_fields():
     state = CircuitState(
         task_id="lp_1khz_budget",
+        circuit_type="low_pass",
+        target_hz=1000.0,
         step_count=5,
         cumulative_reward=2.3,
         best_score=0.9,

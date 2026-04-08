@@ -1,5 +1,7 @@
 """Quick confidence checks for reset/step flow and score availability."""
 
+import json
+
 import pytest
 
 from models import CircuitAction
@@ -9,23 +11,29 @@ from server.simulator import compute_reward
 from server.task_loader import list_task_ids, load_task
 
 
-class FakeChatCompletions:
-    def __init__(self, content: str = "r_up") -> None:
-        self.content = content
+def proposal_json(action: str) -> str:
+    return json.dumps(
+        {
+            "action": action,
+            "objective": "Tighten the target mismatch",
+            "rationale": "Use the strongest evaluated move on the current board.",
+            "expected_outcome": "Improve the engineering tradeoff.",
+            "confidence": 0.8,
+        }
+    )
+
+
+class FakeResponses:
+    def __init__(self, output_text: str = proposal_json("c_up")) -> None:
+        self.output_text = output_text
 
     def create(self, **kwargs):
-        message = type("Message", (), {"content": self.content})()
-        choice = type("Choice", (), {"message": message})()
-        return type("Response", (), {"choices": [choice]})()
+        return type("Response", (), {"output_text": self.output_text})()
 
 
 class FakeClient:
-    def __init__(self, content: str = "r_up") -> None:
-        self.chat = type(
-            "ChatNamespace",
-            (),
-            {"completions": FakeChatCompletions(content=content)},
-        )()
+    def __init__(self, output_text: str = proposal_json("c_up")) -> None:
+        self.responses = FakeResponses(output_text=output_text)
 
 
 def test_reset_and_step_cycle():
@@ -104,7 +112,7 @@ def test_inference_enumerates_same_task_ids_as_loader(monkeypatch):
     monkeypatch.setenv("HF_TOKEN", "hf_test_token")
     monkeypatch.setenv("MODEL_NAME", "test-model")
     monkeypatch.setenv("API_BASE_URL", "https://router.huggingface.co/v1")
-    results = run_all_inference("tasks", client=FakeClient(content="r_up"))
+    results = run_all_inference("tasks", client=FakeClient(output_text=proposal_json("c_up")))
     assert [result["task_id"] for result in results] == list_task_ids("tasks")
 
 
@@ -136,6 +144,10 @@ def test_state_exposes_best_state_snapshot():
     assert state.best_hz is not None
     assert state.best_normalized_error is not None
     assert state.best_normalized_cost is not None
+    assert state.target_hz == task.target_hz
+    assert state.circuit_type == task.circuit_type
+    assert state.current_normalized_error == env.normalized_error
+    assert state.current_cost == env.current_cost
 
 
 def test_low_cost_task_starts_expensive_and_can_improve_by_moving_r_down():
@@ -162,9 +174,14 @@ def test_state_returns_typed_episode_summary():
 
     state = env.state()
     assert state.task_id == task.task_id
+    assert state.circuit_type == task.circuit_type
+    assert state.target_hz == task.target_hz
     assert state.step_count == 1
     assert state.best_score == env.score()
     assert state.done is False
+    assert state.current_hz == env.current_hz
+    assert state.current_normalized_error == env.normalized_error
+    assert state.current_cost == env.current_cost
     assert state.best_r_ohms is not None
     assert state.best_c_farads is not None
 

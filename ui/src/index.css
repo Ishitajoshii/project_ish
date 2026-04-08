@@ -1,0 +1,128 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.5rem;
+
+  /* Dark benchmark console palette (we force dark) */
+  --background: oklch(0.16 0.006 120);
+  --foreground: oklch(0.93 0.01 95);
+  --card: oklch(0.185 0.006 120);
+  --card-foreground: oklch(0.93 0.01 95);
+  --popover: oklch(0.185 0.006 120);
+  --popover-foreground: oklch(0.93 0.01 95);
+  --primary: oklch(0.72 0.11 55);
+  --primary-foreground: oklch(0.15 0.02 60);
+  --secondary: oklch(0.23 0.006 120);
+  --secondary-foreground: oklch(0.93 0.01 95);
+  --muted: oklch(0.22 0.005 120);
+  --muted-foreground: oklch(0.64 0.008 110);
+  --accent: oklch(0.23 0.006 120);
+  --accent-foreground: oklch(0.93 0.01 95);
+  --destructive: oklch(0.6 0.18 30);
+  --border: oklch(0.26 0.006 120);
+  --input: oklch(0.22 0.006 120);
+  --ring: oklch(0.72 0.11 55);
+
+  /* Domain tokens */
+  --ink: #ecede9;
+  --ink-dim: #b8bbb4;
+  --line: #232622;
+  --line-strong: #2f332e;
+  --surface: #0e0f0d;
+  --panel: #141613;
+  --inset: #0a0b0a;
+  --accent-rgb: #c98b5f;
+  --accent-dim: #8a5f42;
+  --ok: #7fb39d;
+  --warn: #d6a36b;
+  --bad: #c46a4a;
+}
+
+@theme inline {
+  --font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Domain tokens exposed as Tailwind colors */
+  --color-ink: var(--ink);
+  --color-ink-dim: var(--ink-dim);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-surface: var(--surface);
+  --color-panel: var(--panel);
+  --color-inset: var(--inset);
+  --color-brand: var(--accent-rgb);
+  --color-brand-dim: var(--accent-dim);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  input[type='range'] {
+    accent-color: var(--accent-rgb);
+  }
+}
+
+@keyframes status_pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.animate_pulse_dot {
+  animation: status_pulse 1.4s ease-in-out infinite;
+}

@@ -5,6 +5,7 @@ version: 0.1.0
 models:
   action: models.CircuitAction
   observation: models.CircuitObservation
+  reward: models.CircuitReward
   state: models.CircuitState
 
 server:

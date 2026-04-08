@@ -15,4 +15,5 @@ htmlcov/
 !.env.example
 assets/
 tests/
-ui/
+ui/node_modules/
+ui/dist/
