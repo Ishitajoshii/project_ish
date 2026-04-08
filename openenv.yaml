@@ -1,18 +1,20 @@
-# OpenEnv benchmark metadata and validation target for this repository.
-benchmark:
-  name: circuitrl
-  version: 0.1.0
-  description: Deterministic circuit-design benchmark with normalized grading.
+name: circuitrl
+description: OpenEnv benchmark for constrained RC circuit tuning with deterministic range-based tasks.
+version: 0.1.0
 
-entrypoints:
-  server: server.app:app
-  inference: inference.py
+models:
+  action: models.CircuitAction
+  observation: models.CircuitObservation
+  state: models.CircuitState
 
-validation:
-  # Minimum normalized score expected during validation runs.
-  target_score: 0.65
-  score_range: [0.0, 1.0]
+server:
+  app: server.app:app
 
-io_contract:
-  stdout_mode: strict_json_line
-  fields: [task_id, score, details]
+docker:
+  dockerfile: server/Dockerfile
+
+tasks:
+  - lp_1khz_budget
+  - lp_10khz_budget
+  - hp_500hz_budget
+  - lp_2khz_low_cost

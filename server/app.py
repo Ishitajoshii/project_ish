@@ -1,56 +1,110 @@
-"""FastAPI server exposing reset/step/score endpoints in OpenEnv style."""
+"""Thin FastAPI/OpenEnv wrapper around the deterministic circuit runtime."""
 
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from pathlib import Path
+
+from fastapi import Body, FastAPI, HTTPException
 from pydantic import BaseModel
 
-from models import CircuitAction
+from models import CircuitAction, CircuitObservation, CircuitState
 from server.environment import CircuitEnvironment
-from server.task_loader import load_task
-
-app = FastAPI(title="circuitrl-openenv")
-_ENV: CircuitEnvironment | None = None
+from server.task_loader import TASKS_DIR, get_task_ids_in_order, load_tasks
 
 
 class ResetRequest(BaseModel):
-    """Request body for selecting a task file and resetting state."""
+    """Optional task selector for starting a fresh episode."""
 
-    task_path: str
+    task_id: str | None = None
+
+
+class StepResponse(BaseModel):
+    """Step transition payload exposed by the API."""
+
+    observation: CircuitObservation
+    reward: float
+    done: bool
+
+
+class TasksResponse(BaseModel):
+    """Deterministic task catalog for UI/debugging use."""
+
+    task_ids: list[str]
+
+
+APP_TASKS_DIR = Path(TASKS_DIR)
+TASKS = load_tasks(APP_TASKS_DIR)
+TASK_IDS = get_task_ids_in_order(TASKS)
+DEFAULT_TASK_ID = TASK_IDS[0]
+ENV = CircuitEnvironment(tasks=TASKS)
+
+app = FastAPI(title="CircuitRL OpenEnv Server")
+
+
+def _resolve_task_id(request: ResetRequest | None) -> str:
+    if request is None or request.task_id is None:
+        return DEFAULT_TASK_ID
+    return request.task_id
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    """Basic readiness probe for local orchestration and CI smoke checks."""
+    """Cheap readiness probe for validators and deployment checks."""
 
     return {"status": "ok"}
 
 
-@app.post("/reset")
-def reset(req: ResetRequest) -> dict:
-    """Load task and create a fresh environment state."""
+@app.post("/reset", response_model=CircuitObservation)
+def reset(request: ResetRequest | None = Body(default=None)) -> CircuitObservation:
+    """Reset the shared environment to the selected or default benchmark task."""
 
-    global _ENV
-    task = load_task(req.task_path)
-    _ENV = CircuitEnvironment({task.task_id: task})
-    obs = _ENV.reset(task.task_id)
-    return {"observation": obs.model_dump(), "task_id": task.task_id}
+    task_id = _resolve_task_id(request)
+    try:
+        return ENV.reset(task_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/step")
-def step(action: CircuitAction) -> dict:
-    """Apply one action transition and return the next observation."""
+@app.post("/step", response_model=StepResponse)
+def step(action: CircuitAction) -> StepResponse:
+    """Apply one action and return the resulting observation and reward."""
 
-    if _ENV is None:
-        raise HTTPException(status_code=400, detail="Environment not initialized")
-    obs, reward, done = _ENV.step(action)
-    return {"observation": obs.model_dump(), "reward": reward, "done": done}
+    try:
+        observation, reward, done = ENV.step(action)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return StepResponse(
+        observation=observation,
+        reward=reward,
+        done=done,
+    )
+
+
+@app.get("/state", response_model=CircuitState)
+def state() -> CircuitState:
+    """Return the current episode summary."""
+
+    try:
+        return ENV.state()
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/tasks", response_model=TasksResponse)
+def tasks() -> TasksResponse:
+    """Expose the deterministic task identifiers for UI/debugging use."""
+
+    return TasksResponse(task_ids=TASK_IDS)
 
 
 @app.get("/score")
-def score() -> dict:
-    """Return normalized score for current trajectory in [0, 1]."""
+def score() -> dict[str, float]:
+    """Backward-compatible score endpoint for local tooling."""
 
-    if _ENV is None:
-        raise HTTPException(status_code=400, detail="Environment not initialized")
-    return {"score": _ENV.score()}
+    try:
+        return {"score": ENV.score()}
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
