@@ -11,85 +11,76 @@ tags:
 
 # CircuitRL
 
-CircuitRL is an OpenEnv-compliant benchmark and demo for autonomous analog circuit tuning. It frames analog design as a sequential decision-making problem: an agent adjusts resistor and capacitor values step by step to match a target circuit specification while minimizing component cost.
+CircuitRL is an OpenEnv benchmark and interactive demo for autonomous analog circuit tuning. An agent adjusts resistor and capacitor values step by step to hit a target cutoff frequency while balancing three engineering goals:
 
-The benchmark is designed for fast, deterministic evaluation and a strong demo experience. It supports Hugging Face Space deployment, Docker-based validation, typed OpenEnv models, structured inference logs, and multiple tasks with normalized graders.
+- accuracy against the target specification
+- lower component cost
+- fewer tuning steps
 
-The production runtime is a FastAPI backend plus a Vite frontend bundle. `openenv-core` remains a declared project dependency because the OpenEnv validator requires it, but the Docker image builds a pruned lock-derived runtime environment with `uv export --prune openenv-core`, so legacy Gradio dependencies are not installed in the served image.
+This repository is built for evaluation, not just presentation. It includes typed OpenEnv models, deterministic tasks and graders, a root-level `inference.py`, a Dockerized Hugging Face Space deployment, and a Vite frontend for step-by-step playback.
 
-## Why CircuitRL
+Live demo: [CircuitRL Space](https://theg1239-circuitrl-openenv.hf.space)  
+Submission source: [GitHub repository](https://github.com/Ishitajoshii/project_ish)
 
-Circuit tuning is usually iterative. Engineers often try multiple resistor and capacitor combinations before reaching the desired behavior. CircuitRL turns that process into a sequential optimization task with deterministic scoring, strong baseline comparisons, and a production reference controller that converges quickly under the benchmark rules.
+## Why This Benchmark Exists
 
-This project is built around three ideas:
-- match a target electrical specification
-- minimize engineering cost
-- beat naive baselines such as random search, heuristics, and brute-force scans
+Analog circuit tuning is a real engineering workflow. Engineers routinely iterate on resistor and capacitor values to get the desired behavior from a simple filter while staying within practical constraints. CircuitRL turns that workflow into a compact, deterministic environment that is suitable for agent evaluation.
 
-## Core Demo Story
+The point of the benchmark is not raw physics complexity. The point is to test whether an agent can make good sequential engineering decisions under a shaped reward, bounded action space, and realistic tradeoffs.
 
-A user sees:
-- a target spec such as `1 kHz low-pass filter`
-- live updates to `R` and `C`
-- a convergence graph showing error dropping over time
-- a final card showing `Target vs Achieved`
-- a comparison against baseline strategies
+## What The Agent Is Solving
 
-Example outcome:
-- Target: `1000 Hz`
-- Achieved: `998 Hz`
-- Cost Score: `0.82`
-- Solved In: `6 steps`
+Each task starts with an RC filter configuration and a target cutoff frequency. The agent can only take one of four multiplicative tuning actions per step:
 
-## Features
-
-- OpenEnv-compliant environment with `reset()`, `step()`, and `state()`
-- Typed action, observation, and state models
-- Deterministic RC filter simulation
-- Multi-objective scoring with accuracy and cost
-- 3+ benchmark tasks with graders
-- Model-driven decision harness that uses the `openai` Python client with `API_BASE_URL`, `MODEL_NAME`, and `HF_TOKEN`
-- Baseline comparisons:
-	- random tuning
-	- heuristic tuning
-	- brute-force search
-	- deterministic reference controller
-- Vite + React frontend for episode playback
-- Hugging Face Space deployment
-- Docker build support
-- Evaluation-friendly `inference.py`
-- Animated UI with convergence plots
-
-## Benchmark Tasks
-
-Initial task set:
-- `lp_1khz_budget` — easy
-- `hp_500hz_budget` — medium
-- `lp_10khz_budget` — medium
-- `lp_2khz_low_cost` — hard
-
-Each task defines:
-- circuit type
-- target frequency
-- initial component values
-- valid `R` and `C` ranges
-- max steps
-- scoring weights
-- success threshold
-
-## Action Space
-
-`CircuitAction` exposes four legal multiplicative moves:
 - `r_up`
 - `r_down`
 - `c_up`
 - `c_down`
 
-Each action applies a `x1.2` or `/1.2` update and then clamps values into the task bounds.
+The environment updates the circuit with the standard RC relation:
 
-## Observation Space
+`f_c = 1 / (2πRC)`
 
-`CircuitObservation` exposes:
+Episodes end when the agent reaches the success tolerance or uses the full step budget.
+
+## Benchmark Tasks
+
+CircuitRL ships with four deterministic tasks, which satisfy the bootcamp requirement of at least three graded tasks with increasing difficulty.
+
+| Task | Difficulty | Objective |
+| --- | --- | --- |
+| `lp_1khz_budget` | Easy | Tune a low-pass filter toward `1 kHz` within the task budget. |
+| `hp_500hz_budget` | Medium | Tune a high-pass filter toward `500 Hz`. |
+| `lp_10khz_budget` | Medium | Tune a low-pass filter toward `10 kHz`. |
+| `lp_2khz_low_cost` | Hard | Hit `2 kHz` while being more cost-efficient. |
+
+Each task defines:
+
+- circuit type
+- target frequency
+- initial `R` and `C`
+- valid resistor and capacitor bounds
+- success tolerance
+- maximum step count
+- cost and step weighting
+
+## Action, Observation, Reward
+
+### Action Space
+
+`CircuitAction` exposes four legal actions:
+
+- `r_up`
+- `r_down`
+- `c_up`
+- `c_down`
+
+Actions are multiplicative, not additive. Each move applies `×1.2` or `/1.2`, then clamps the updated value into the task bounds.
+
+### Observation Space
+
+`CircuitObservation` contains:
+
 - `task_id`
 - `circuit_type`
 - `target_hz`
@@ -101,17 +92,27 @@ Each action applies a `x1.2` or `/1.2` update and then clamps values into the ta
 - `remaining_steps`
 - `last_action_error`
 
-`CircuitState` extends that with episode-level fields such as `step_count`, `cumulative_reward`, `best_score`, best-so-far component values, and `done`.
+`CircuitState` extends the observation with episode-level fields including:
 
-## Reward And Info
+- `step_count`
+- `cumulative_reward`
+- `best_score`
+- best-so-far component values
+- `done`
+
+### Reward Model
 
 `CircuitReward` exposes:
+
 - `value`
 - `accuracy_score`
 - `cost_efficiency`
 - `step_efficiency`
 
-`CircuitStepInfo` exposes:
+The environment returns meaningful reward over the full trajectory, not just at episode end. The final score is normalized to `[0.0, 1.0]`.
+
+`CircuitStepInfo` adds transition metadata such as:
+
 - `task_id`
 - `step_count`
 - `best_score`
@@ -121,94 +122,121 @@ Each action applies a `x1.2` or `/1.2` update and then clamps values into the ta
 - `success_threshold`
 - `terminated_by`
 
-## How It Works
+## Agent And Baselines
 
-CircuitRL uses the RC cutoff frequency equation:
+The default benchmark agent is a model-driven harness implemented in [server/agent_harness.py](/Users/ishaan/Projects/project_ish/server/agent_harness.py). It uses the `openai` Python client, reads evaluator-compatible environment variables, and proposes one legal action per step using structured JSON output.
 
-`f_c = 1 / (2πRC)`
+The harness is paired with an exact simulator-backed evaluator board, which means every step is judged against the true next-state consequences of all legal actions. If the model proposes a dominated move, the evaluator can revise or override it.
 
-The agent interacts with the environment through a discrete multiplicative action space:
-- increase `R`
-- decrease `R`
-- increase `C`
-- decrease `C`
+The benchmark also includes baseline comparisons:
 
-Each action updates the circuit, recomputes the current cutoff frequency, and produces a reward based on:
-- closeness to the target
-- component cost efficiency
-- step efficiency
+- random tuning
+- heuristic tuning
+- brute-force search
+- deterministic reference policy
 
-Final scores are normalized to the range `[0.0, 1.0]`.
+## Frontend Demo
 
-Episodes terminate when the normalized error falls inside the success tolerance or when the task reaches its maximum step budget.
+The UI is a Vite + React console that presents the benchmark as a tool, not a landing page. It supports:
 
-## Reference Scores
+- task selection
+- target specification display
+- live `R` and `C` telemetry
+- error-vs-step plotting
+- step-by-step episode playback
+- final score summary
+- baseline comparison
 
-The repo includes a deterministic reference controller for regression testing and baseline comparison. Its exact scores on the built-in tasks are:
+Frontend API surface:
 
-- `lp_1khz_budget` → `0.835974`
-- `lp_10khz_budget` → `0.850260`
-- `hp_500hz_budget` → `0.831674`
-- `lp_2khz_low_cost` → `0.852066`
+- `GET /api/ui/catalog`
+- `GET /api/ui/preview?task_id=...`
+- `GET /api/ui/episode?task_id=...`
 
-## Repository Structure
+## OpenEnv Compliance
+
+CircuitRL implements the required environment surface:
+
+- `reset()`
+- `step()`
+- `state()`
+
+The submission also includes:
+
+- [openenv.yaml](/Users/ishaan/Projects/project_ish/openenv.yaml)
+- typed Pydantic models in [models.py](/Users/ishaan/Projects/project_ish/models.py)
+- root-level [inference.py](/Users/ishaan/Projects/project_ish/inference.py)
+- root-level [Dockerfile](/Users/ishaan/Projects/project_ish/Dockerfile)
+- deterministic tasks in [tasks](/Users/ishaan/Projects/project_ish/tasks)
+- tests in [tests](/Users/ishaan/Projects/project_ish/tests)
+
+Additional validator-friendly endpoints:
+
+- `GET /metadata`
+- `GET /schema`
+- `POST /mcp`
+- `GET /health`
+
+## Repository Layout
 
 ```text
 circuitrl/
+├── Dockerfile
+├── README.md
+├── client.py
 ├── inference.py
+├── models.py
 ├── openenv.yaml
 ├── pyproject.toml
-├── README.md
-├── models.py
-├── client.py
-├── tasks/
-│   ├── lp_1khz_budget.json
-│   ├── lp_10khz_budget.json
-│   ├── hp_500hz_budget.json
-│   └── lp_2khz_low_cost.json
+├── scripts/
+│   └── validate_submission.sh
 ├── server/
+│   ├── agent_harness.py
 │   ├── app.py
-│   ├── ui_service.py
+│   ├── baselines.py
 │   ├── environment.py
 │   ├── grader.py
-│   ├── baselines.py
-│   ├── task_loader.py
+│   ├── policy_agent.py
 │   ├── simulator.py
-│   └── Dockerfile
-├── ui/
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── src/
-│       ├── circuit_rl_app.tsx
-│       ├── api_client.ts
-│       ├── ui_types.ts
-│       └── components/
-└── tests/
-    ├── test_app.py
-    ├── test_simulator.py
-    ├── test_grader.py
-    └── test_environment.py
+│   ├── task_loader.py
+│   └── ui_service.py
+├── tasks/
+├── tests/
+└── ui/
 ```
 
 ## Local Development
 
-Run the backend API:
+### 1. Install Python dependencies
+
+```bash
+uv sync --extra dev
+```
+
+### 2. Install frontend dependencies
+
+```bash
+cd ui
+npm install
+cd ..
+```
+
+### 3. Run the backend
 
 ```bash
 uv run --extra dev uvicorn server.app:app --reload
 ```
 
-Run the Vite frontend in a second terminal:
+### 4. Run the frontend
 
 ```bash
 cd ui
-npm install
 npm run dev
 ```
 
 The frontend runs on `http://127.0.0.1:5173` and proxies `/api/*` to the FastAPI backend on `http://127.0.0.1:8000`.
 
-If you want the Python server to serve the built frontend directly:
+### 5. Serve the built frontend from the backend
 
 ```bash
 cd ui
@@ -217,47 +245,77 @@ cd ..
 uv run --extra dev uvicorn server.app:app --reload
 ```
 
-Once `ui/dist` exists, the backend serves the built app at `/` and keeps the API under `/api/*`.
+Once `ui/dist` exists, the backend serves the built app at `/`.
 
-Run evaluator-style inference with the production policy backend:
+## Inference
+
+The evaluator-facing script is [inference.py](/Users/ishaan/Projects/project_ish/inference.py). It uses the OpenAI client for all model calls and emits the required structured stdout lines:
+
+- `[START]`
+- `[STEP]`
+- `[END]`
+
+### Environment Variables
+
+| Variable | Purpose |
+| --- | --- |
+| `API_BASE_URL` | Base URL for the model endpoint. |
+| `MODEL_NAME` | Model identifier used for inference. |
+| `HF_TOKEN` | Evaluator-compatible token for OpenAI-compatible hosted endpoints. |
+| `OPENAI_API_KEY` | Direct API key when using the official OpenAI endpoint. |
+
+### Example: OpenAI endpoint
 
 ```bash
-API_BASE_URL=https://router.huggingface.co/v1 \
-MODEL_NAME=your-model \
-HF_TOKEN=your-token \
-uv run python inference.py --task tasks/lp_1khz_budget.json
+export API_BASE_URL=https://api.openai.com/v1
+export MODEL_NAME=gpt-5.2
+export OPENAI_API_KEY=your-key
+
+uv run python inference.py
 ```
 
-The default path uses the model-driven harness through the `openai` client and emits the required `[START]`, `[STEP]`, and `[END]` logs for every task.
+### Example: OpenAI-compatible router
 
-The deterministic reference backend remains available for local regression checks:
+```bash
+export API_BASE_URL=https://router.huggingface.co/v1
+export MODEL_NAME=your-router-model
+export HF_TOKEN=your-token
+
+uv run python inference.py
+```
+
+### Deterministic reference backend
+
+For regression testing, a deterministic reference policy remains available:
 
 ```bash
 uv run python inference.py --agent-backend policy --task tasks/lp_1khz_budget.json
 ```
 
-Useful environment variables:
+## Reference Scores
 
-- `API_BASE_URL` — endpoint for the model API
-- `MODEL_NAME` — model identifier for inference
-- `HF_TOKEN` — evaluator-compatible API token
-- `OPENAI_API_KEY` — optional direct key when running against the OpenAI endpoint
+Reference scores from the built-in benchmark set:
 
-## Hugging Face Spaces
+| Task | Score |
+| --- | ---: |
+| `lp_1khz_budget` | `0.835974` |
+| `lp_10khz_budget` | `0.850260` |
+| `hp_500hz_budget` | `0.831674` |
+| `lp_2khz_low_cost` | `0.852066` |
 
-The repo is configured for a Docker Space via the README YAML frontmatter:
-- `sdk: docker`
-- `app_port: 8000`
-- `tags: [openenv]`
+## Docker And Hugging Face Spaces
 
-Set your Space runtime variables in the Space settings:
-- `API_BASE_URL`
-- `MODEL_NAME`
-- `HF_TOKEN`
+The canonical deployment target is the root [Dockerfile](/Users/ishaan/Projects/project_ish/Dockerfile).
+
+The project keeps `openenv-core` in the dependency graph because the validator expects it, but the deployment image uses a pruned `uv export` runtime install so validator-only Gradio dependencies are not shipped in the served container.
+
+The live Space is:
+
+- [theg1239/circuitrl-openenv](https://huggingface.co/spaces/theg1239/circuitrl-openenv)
 
 ## Validation
 
-Run the full local validation loop before submission:
+Run the full local submission loop:
 
 ```bash
 uv run --extra dev pytest
@@ -265,15 +323,20 @@ uv run openenv validate .
 docker build .
 ```
 
-Or run the bundled helper:
+Or use the bundled helper:
 
 ```bash
 ./scripts/validate_submission.sh
-./scripts/validate_submission.sh https://your-space.hf.space
+./scripts/validate_submission.sh https://theg1239-circuitrl-openenv.hf.space
 ```
 
-## Frontend API Endpoints
+## Current Status
 
-- `GET /api/ui/catalog`
-- `GET /api/ui/preview?task_id=...`
-- `GET /api/ui/episode?task_id=...`
+The current submission state has been checked locally and on the live Space:
+
+- tests pass
+- `openenv validate` passes
+- Docker builds from the repo root
+- the live Hugging Face Space responds on `/health`
+- the live Hugging Face Space responds on `/reset`
+- the frontend-backed API routes return valid task and episode payloads

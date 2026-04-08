@@ -12,7 +12,7 @@ server:
   app: server.app:app
 
 docker:
-  dockerfile: server/Dockerfile
+  dockerfile: Dockerfile
 
 tasks:
   - lp_1khz_budget
