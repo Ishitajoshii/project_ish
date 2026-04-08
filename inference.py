@@ -31,7 +31,7 @@ def load_inference_config() -> InferenceConfig:
     """Read inference configuration from environment variables."""
 
     api_base_url = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-    model_name = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+    model_name = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-7B-Instruct-AWQ"
     hf_token = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
     image_name = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
 
