@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException
 from pydantic import BaseModel
+import uvicorn
 
 from models import CircuitAction, CircuitObservation, CircuitState
 from server.environment import CircuitEnvironment
@@ -108,3 +109,13 @@ def score() -> dict[str, float]:
         return {"score": ENV.score()}
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def main() -> None:
+    """Run the FastAPI app with uvicorn for local/dev or validator entrypoints."""
+
+    uvicorn.run("server.app:app", host="0.0.0.0", port=8000)
+
+
+if __name__ == "__main__":
+    main()
