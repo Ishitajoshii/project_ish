@@ -5,7 +5,7 @@ import pytest
 from models import CircuitAction
 from inference import run_all_inference
 from server.environment import CircuitEnvironment
-from server.grader import normalized_score
+from server.simulator import compute_reward
 from server.task_loader import list_task_ids, load_task
 
 
@@ -29,18 +29,51 @@ def test_score_is_bounded():
     assert 0.0 <= s <= 1.0
 
 
+def test_reset_initializes_clean_state():
+    task = load_task("tasks/lp_1khz_budget.json")
+    env = CircuitEnvironment({task.task_id: task})
+
+    env.reset(task.task_id)
+
+    assert env.step_count == 0
+    assert env.cumulative_reward == 0.0
+    assert env.best_score == 0.0
+    assert env.done is False
+
+
 def test_invalid_action_reports_last_action_error():
     task = load_task("tasks/lp_1khz_budget.json")
     env = CircuitEnvironment({task.task_id: task})
-    env.reset(task.task_id)
+    start = env.reset(task.task_id)
 
     obs, reward, done = env.step({"action": "nope"})
 
     assert obs.last_action_error == "invalid action: nope"
+    assert obs.current_r_ohms == start.current_r_ohms
+    assert obs.current_c_farads == start.current_c_farads
     assert obs.remaining_steps == 7
     assert 0.0 <= reward <= 1.0
     assert done is False
     assert env.score() > 0.0
+
+
+def test_step_increments_step_count_before_reward_logic():
+    task = load_task("tasks/lp_1khz_budget.json")
+    env = CircuitEnvironment({task.task_id: task})
+    env.reset(task.task_id)
+
+    obs, reward, _ = env.step(CircuitAction(action="r_up"))
+
+    expected_reward = compute_reward(
+        current_hz=obs.current_hz,
+        target_hz=task.target_hz,
+        normalized_cost=obs.current_cost,
+        step_count=1,
+        max_steps=task.max_steps,
+    )
+
+    assert env.step_count == 1
+    assert reward == expected_reward
 
 
 def test_inference_enumerates_same_task_ids_as_loader():
@@ -53,19 +86,12 @@ def test_final_score_uses_best_reward_seen():
     env = CircuitEnvironment({task.task_id: task})
     env.reset(task.task_id)
 
-    first, reward, done = env.step(CircuitAction(action="r_up"))
-    best_after_first = normalized_score(
-        first.normalized_error,
-        first.current_cost,
-        1,
-        8,
-    )
-    assert env.score() == best_after_first
-    assert reward == best_after_first
-    assert done is False
+    _, first_reward, first_done = env.step(CircuitAction(action="r_up"))
+    _, second_reward, _ = env.step(CircuitAction(action="r_down"))
 
-    env.step(CircuitAction(action="r_down"))
-    assert env.score() == best_after_first
+    assert first_done is False
+    assert first_reward > second_reward
+    assert env.score() == first_reward
 
 
 def test_low_cost_task_starts_expensive_and_can_improve_by_moving_r_down():
