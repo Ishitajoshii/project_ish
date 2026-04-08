@@ -460,26 +460,35 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
-    { name = "gradio" },
     { name = "httpx" },
     { name = "openai" },
     { name = "openenv-core" },
     { name = "pydantic" },
-    { name = "pytest" },
+    { name = "python-dotenv" },
     { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+ui = [
+    { name = "gradio" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
-    { name = "gradio", specifier = ">=4.0" },
+    { name = "gradio", marker = "extra == 'ui'", specifier = ">=4.0" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "openai", specifier = ">=2.0" },
     { name = "openenv-core", specifier = ">=0.2.0" },
     { name = "pydantic", specifier = ">=2.6" },
-    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "python-dotenv", specifier = ">=1.0" },
     { name = "uvicorn", specifier = ">=0.29" },
 ]
+provides-extras = ["ui", "dev"]
 
 [[package]]
 name = "click"

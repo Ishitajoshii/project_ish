@@ -7,14 +7,18 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
 from openai import OpenAI
 
-from models import CircuitAction
+from models import CircuitAction, CircuitObservation
 from server.environment import CircuitEnvironment
 from server.grader import is_success
 from server.task_loader import get_task_ids_in_order, load_task_file, load_tasks
 
 BENCHMARK_NAME = "circuitrl"
+VALID_ACTIONS = ("r_up", "r_down", "c_up", "c_down")
+
+load_dotenv()
 
 
 @dataclass(frozen=True)
@@ -32,7 +36,20 @@ def load_inference_config() -> InferenceConfig:
 
     api_base_url = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
     model_name = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-7B-Instruct-AWQ"
-    hf_token = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+    if "api.openai.com" in api_base_url:
+        hf_token = (
+            os.getenv("OPENAI_API_KEY")
+            or os.getenv("OPEN_AI_API_KEY")
+            or os.getenv("API_KEY")
+            or os.getenv("HF_TOKEN")
+        )
+    else:
+        hf_token = (
+            os.getenv("HF_TOKEN")
+            or os.getenv("API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+            or os.getenv("OPEN_AI_API_KEY")
+        )
     image_name = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
 
     if not hf_token:
@@ -53,6 +70,75 @@ def build_openai_client(config: InferenceConfig) -> OpenAI:
         base_url=config.api_base_url,
         api_key=config.hf_token,
     )
+
+
+def _build_action_prompt(observation: CircuitObservation) -> list[dict[str, str]]:
+    """Build a compact deterministic prompt for action selection."""
+
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are tuning an RC circuit. "
+                "Reply with exactly one token from this set and nothing else: "
+                "r_up | r_down | c_up | c_down."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"task_id={observation.task_id}\n"
+                f"target_hz={observation.target_hz}\n"
+                f"current_hz={observation.current_hz}\n"
+                f"current_r_ohms={observation.current_r_ohms}\n"
+                f"current_c_farads={observation.current_c_farads}\n"
+                f"normalized_error={observation.normalized_error}\n"
+                f"current_cost={observation.current_cost}\n"
+                f"remaining_steps={observation.remaining_steps}\n"
+                f"last_action_error={observation.last_action_error or 'null'}"
+            ),
+        },
+    ]
+
+
+def _extract_action(content: str) -> str:
+    """Parse one valid action token from model output."""
+
+    cleaned = content.strip().lower()
+    if cleaned in VALID_ACTIONS:
+        return cleaned
+
+    for action in VALID_ACTIONS:
+        if action in cleaned:
+            return action
+
+    raise ValueError(f"model returned invalid action: {content!r}")
+
+
+def _fallback_action(observation: CircuitObservation) -> str:
+    """Use a deterministic fallback if the model response is missing or malformed."""
+
+    return "r_up" if observation.current_hz > observation.target_hz else "r_down"
+
+
+def choose_model_action(
+    client: OpenAI,
+    config: InferenceConfig,
+    observation: CircuitObservation,
+) -> str:
+    """Ask the configured model for the next discrete circuit action."""
+
+    try:
+        response = client.chat.completions.create(
+            model=config.model_name,
+            messages=_build_action_prompt(observation),
+            temperature=0.0,
+            max_completion_tokens=16,
+        )
+        content = response.choices[0].message.content or ""
+        return _extract_action(content)
+    except Exception:
+        return _fallback_action(observation)
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -107,10 +193,8 @@ def run_inference(
         log_start(task=task.task_id, env=BENCHMARK_NAME, model=resolved_config.model_name)
 
     try:
-        # Minimal deterministic policy: adjust R in the direction that moves cutoff
-        # frequency toward the target.
         while not env.is_done:
-            action = "r_up" if obs.current_hz > task.target_hz else "r_down"
+            action = choose_model_action(_client, resolved_config, obs)
             obs, reward, done = env.step(CircuitAction(action=action))
             rewards.append(reward)
             steps_taken += 1

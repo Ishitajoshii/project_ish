@@ -9,6 +9,25 @@ from server.simulator import compute_reward
 from server.task_loader import list_task_ids, load_task
 
 
+class FakeChatCompletions:
+    def __init__(self, content: str = "r_up") -> None:
+        self.content = content
+
+    def create(self, **kwargs):
+        message = type("Message", (), {"content": self.content})()
+        choice = type("Choice", (), {"message": message})()
+        return type("Response", (), {"choices": [choice]})()
+
+
+class FakeClient:
+    def __init__(self, content: str = "r_up") -> None:
+        self.chat = type(
+            "ChatNamespace",
+            (),
+            {"completions": FakeChatCompletions(content=content)},
+        )()
+
+
 def test_reset_and_step_cycle():
     task = load_task("tasks/lp_1khz_budget.json")
     env = CircuitEnvironment({task.task_id: task})
@@ -85,7 +104,7 @@ def test_inference_enumerates_same_task_ids_as_loader(monkeypatch):
     monkeypatch.setenv("HF_TOKEN", "hf_test_token")
     monkeypatch.setenv("MODEL_NAME", "test-model")
     monkeypatch.setenv("API_BASE_URL", "https://router.huggingface.co/v1")
-    results = run_all_inference("tasks")
+    results = run_all_inference("tasks", client=FakeClient(content="r_up"))
     assert [result["task_id"] for result in results] == list_task_ids("tasks")
 
 
