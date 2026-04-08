@@ -1,9 +1,8 @@
-"""Evaluator-facing script that emits compact JSON lines to stdout."""
+"""Evaluator-facing script that emits strict episode log lines to stdout."""
 
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,7 +11,10 @@ from openai import OpenAI
 
 from models import CircuitAction
 from server.environment import CircuitEnvironment
+from server.grader import is_success
 from server.task_loader import get_task_ids_in_order, load_task_file, load_tasks
+
+BENCHMARK_NAME = "circuitrl"
 
 
 @dataclass(frozen=True)
@@ -53,11 +55,40 @@ def build_openai_client(config: InferenceConfig) -> OpenAI:
     )
 
 
+def log_start(task: str, env: str, model: str) -> None:
+    """Emit the exact required episode-start line."""
+
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error: str | None) -> None:
+    """Emit the exact required per-step line."""
+
+    error_value = error if error else "null"
+    done_value = str(done).lower()
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_value} error={error_value}",
+        flush=True,
+    )
+
+
+def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> None:
+    """Emit the exact required episode-end line."""
+
+    rewards_str = ",".join(f"{reward:.2f}" for reward in rewards)
+    success_value = str(success).lower()
+    print(
+        f"[END] success={success_value} steps={steps} score={score:.3f} rewards={rewards_str}",
+        flush=True,
+    )
+
+
 def run_inference(
     task_file: str,
     *,
     config: InferenceConfig | None = None,
     client: OpenAI | None = None,
+    log_stdout: bool = False,
 ) -> dict:
     """Run one deterministic policy and return evaluator payload."""
 
@@ -67,25 +98,52 @@ def run_inference(
     task = load_task_file(Path(task_file))
     env = CircuitEnvironment({task.task_id: task})
     obs = env.reset(task.task_id)
+    rewards: list[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
 
-    # Minimal deterministic policy: adjust R in the direction that moves cutoff
-    # frequency toward the target.
-    while not env.is_done:
-        action = "r_up" if obs.current_hz > task.target_hz else "r_down"
-        obs, _, _ = env.step(CircuitAction(action=action))
+    if log_stdout:
+        log_start(task=task.task_id, env=BENCHMARK_NAME, model=resolved_config.model_name)
 
-    score = env.score()
-    return {
-        "task_id": task.task_id,
-        "score": score,
-        "details": {
-            "final_output_hz": obs.current_hz,
-            "normalized_error": obs.normalized_error,
-            "cost": obs.current_cost,
-            "solved": env.is_done and obs.normalized_error <= 0.02,
-            "model_name": resolved_config.model_name,
-        },
-    }
+    try:
+        # Minimal deterministic policy: adjust R in the direction that moves cutoff
+        # frequency toward the target.
+        while not env.is_done:
+            action = "r_up" if obs.current_hz > task.target_hz else "r_down"
+            obs, reward, done = env.step(CircuitAction(action=action))
+            rewards.append(reward)
+            steps_taken += 1
+            if log_stdout:
+                log_step(
+                    step=steps_taken,
+                    action=action,
+                    reward=reward,
+                    done=done,
+                    error=obs.last_action_error,
+                )
+
+        score = env.score()
+        success = is_success(score)
+        return {
+            "task_id": task.task_id,
+            "score": score,
+            "details": {
+                "final_output_hz": obs.current_hz,
+                "normalized_error": obs.normalized_error,
+                "cost": obs.current_cost,
+                "solved": env.is_done and obs.normalized_error <= 0.02,
+                "model_name": resolved_config.model_name,
+                "rewards": rewards,
+                "steps": steps_taken,
+            },
+        }
+    finally:
+        if not score and env.task is not None:
+            score = env.score()
+            success = is_success(score)
+        if log_stdout:
+            log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
 def run_all_inference(
@@ -93,6 +151,7 @@ def run_all_inference(
     *,
     config: InferenceConfig | None = None,
     client: OpenAI | None = None,
+    log_stdout: bool = False,
 ) -> list[dict]:
     """Run inference across the deterministic benchmark task set."""
 
@@ -106,6 +165,7 @@ def run_all_inference(
             str(base_dir / f"{task_id}.json"),
             config=resolved_config,
             client=resolved_client,
+            log_stdout=log_stdout,
         )
         for task_id in ordered_ids
     ]
@@ -119,14 +179,10 @@ def main() -> None:
     config = load_inference_config()
     client = build_openai_client(config)
     results = (
-        [run_inference(args.task, config=config, client=client)]
+        [run_inference(args.task, config=config, client=client, log_stdout=True)]
         if args.task
-        else run_all_inference(config=config, client=client)
+        else run_all_inference(config=config, client=client, log_stdout=True)
     )
-
-    # Emit one compact JSON object line per task for evaluator-friendly logs.
-    for result in results:
-        print(json.dumps(result, separators=(",", ":")))
 
 
 if __name__ == "__main__":
