@@ -10,7 +10,7 @@ from typing import Any
 from models import CircuitAction, CircuitObservation, CircuitTaskSpec
 from server.environment import CircuitEnvironment
 from server.grader import is_success
-from server.simulator import SUCCESS_TOLERANCE, evaluate_circuit_state
+from server.simulator import SUCCESS_TOLERANCE, evaluate_circuit_state, normalize_log_value
 
 BASELINE_ACTIONS = ["r_up", "r_down", "c_up", "c_down"]
 
@@ -63,15 +63,16 @@ def build_baseline_result(
 def run_baseline_episode(
     env: CircuitEnvironment,
     task_id: str,
-    choose_action: Callable[[CircuitObservation], str],
+    choose_action: Callable[[CircuitObservation, int, CircuitTaskSpec], str],
     *,
     baseline_name: str,
 ) -> dict[str, Any]:
     """Run one deterministic policy against the environment until termination."""
 
     observation = env.reset(task_id)
+    task = env._require_task()
     while not env.is_done:
-        action_name = choose_action(observation)
+        action_name = choose_action(observation, env.step_count + 1, task)
         observation, _, done = env.step(CircuitAction(action=action_name))
         if done:
             break
@@ -104,17 +105,43 @@ def run_random_baseline(
     return run_baseline_episode(
         env,
         task_id,
-        lambda _: rng.choice(BASELINE_ACTIONS),
+        lambda _observation, _step_count, _task: rng.choice(BASELINE_ACTIONS),
         baseline_name="random",
     )
 
 
-def choose_heuristic_action(observation: CircuitObservation) -> str:
-    """Choose a deterministic direction based on whether cutoff is too high or low."""
+def _prefer_r_on_step(step_count: int) -> bool:
+    """Use step parity as a deterministic fallback tie-breaker."""
+
+    return step_count % 2 == 1
+
+
+def choose_heuristic_action(
+    observation: CircuitObservation,
+    step_count: int,
+    task: CircuitTaskSpec,
+) -> str:
+    """Choose a deterministic action using frequency direction and cost pressure."""
+
+    r_pressure = normalize_log_value(
+        observation.current_r_ohms,
+        task.min_r_ohms,
+        task.max_r_ohms,
+    )
+    c_pressure = normalize_log_value(
+        observation.current_c_farads,
+        task.min_c_farads,
+        task.max_c_farads,
+    )
 
     if observation.current_hz > observation.target_hz:
-        return "r_up"
-    return "r_down"
+        if abs(r_pressure - c_pressure) <= 1e-12:
+            return "r_up" if _prefer_r_on_step(step_count) else "c_up"
+        return "r_up" if r_pressure < c_pressure else "c_up"
+
+    if abs(r_pressure - c_pressure) <= 1e-12:
+        return "r_down" if _prefer_r_on_step(step_count) else "c_down"
+    return "r_down" if r_pressure > c_pressure else "c_down"
 
 
 def run_heuristic_baseline(

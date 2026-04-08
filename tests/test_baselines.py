@@ -1,5 +1,6 @@
 """Confidence checks for deterministic baseline comparators."""
 
+from models import CircuitObservation
 from server.baselines import (
     BASELINE_ACTIONS,
     brute_force_baseline,
@@ -35,7 +36,45 @@ def test_choose_heuristic_action_moves_cutoff_toward_target():
     obs = env.reset(task.task_id)
 
     assert obs.current_hz > obs.target_hz
-    assert choose_heuristic_action(obs) == "r_up"
+    assert choose_heuristic_action(obs, 1, task) == "r_up"
+
+
+def test_choose_heuristic_action_alternates_on_equal_cost_pressure():
+    task = load_task("tasks/lp_1khz_budget.json")
+    obs = CircuitObservation(
+        task_id=task.task_id,
+        circuit_type=task.circuit_type,
+        target_hz=task.target_hz,
+        current_r_ohms=10_000.0,
+        current_c_farads=3.1622776601683795e-7,
+        current_hz=1500.0,
+        normalized_error=0.5,
+        current_cost=0.5,
+        remaining_steps=task.max_steps,
+        last_action_error=None,
+    )
+
+    assert choose_heuristic_action(obs, 1, task) == "r_up"
+    assert choose_heuristic_action(obs, 2, task) == "c_up"
+
+
+def test_choose_heuristic_action_prefers_lower_cost_pressure_when_lowering_cutoff():
+    task = load_task("tasks/lp_1khz_budget.json")
+    tuned_obs = CircuitObservation(
+        task_id=task.task_id,
+        circuit_type=task.circuit_type,
+        target_hz=task.target_hz,
+        current_r_ohms=100_000.0,
+        current_c_farads=1e-7,
+        current_hz=1500.0,
+        normalized_error=0.5,
+        current_cost=0.5,
+        remaining_steps=task.max_steps - 1,
+        last_action_error=None,
+    )
+
+    assert tuned_obs.current_hz > tuned_obs.target_hz
+    assert choose_heuristic_action(tuned_obs, 2, task) == "c_up"
 
 
 def test_heuristic_baseline_returns_shared_payload_fields():
@@ -51,6 +90,49 @@ def test_heuristic_baseline_returns_shared_payload_fields():
     assert task.min_c_farads <= result["best_c_farads"] <= task.max_c_farads
     assert 0.0 <= result["score"] <= 1.0
     assert 0.0 <= result["normalized_cost"] <= 1.0
+
+
+def test_heuristic_baseline_completes_and_returns_compact_summary():
+    task = load_task("tasks/lp_1khz_budget.json")
+
+    result = run_heuristic_baseline(CircuitEnvironment({task.task_id: task}), task.task_id)
+
+    assert result["task_id"] == task.task_id
+    assert 0.0 <= result["score"] <= 1.0
+    assert result["steps_used"] <= task.max_steps
+
+
+def test_heuristic_chooser_always_returns_valid_action():
+    task = load_task("tasks/lp_1khz_budget.json")
+    observations = [
+        CircuitObservation(
+            task_id=task.task_id,
+            circuit_type=task.circuit_type,
+            target_hz=task.target_hz,
+            current_r_ohms=1_000.0,
+            current_c_farads=1e-7,
+            current_hz=1_500.0,
+            normalized_error=0.5,
+            current_cost=0.3,
+            remaining_steps=task.max_steps,
+            last_action_error=None,
+        ),
+        CircuitObservation(
+            task_id=task.task_id,
+            circuit_type=task.circuit_type,
+            target_hz=task.target_hz,
+            current_r_ohms=10_000.0,
+            current_c_farads=1e-6,
+            current_hz=500.0,
+            normalized_error=0.5,
+            current_cost=0.7,
+            remaining_steps=task.max_steps - 1,
+            last_action_error=None,
+        ),
+    ]
+
+    for step_count, observation in enumerate(observations, start=1):
+        assert choose_heuristic_action(observation, step_count, task) in BASELINE_ACTIONS
 
 
 def test_bruteforce_baseline_reports_grid_evaluations_and_best_candidate():

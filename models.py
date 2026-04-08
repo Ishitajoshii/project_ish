@@ -51,6 +51,11 @@ class CircuitState(BaseModel):
     current_r_ohms: float | None = None
     current_c_farads: float | None = None
     current_hz: float | None = None
+    best_r_ohms: float | None = None
+    best_c_farads: float | None = None
+    best_hz: float | None = None
+    best_normalized_error: float | None = None
+    best_normalized_cost: float | None = None
 
 
 class CircuitTaskSpec(BaseModel):
