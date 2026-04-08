@@ -81,7 +81,10 @@ def test_step_increments_step_count_before_reward_logic():
     assert reward == expected_reward
 
 
-def test_inference_enumerates_same_task_ids_as_loader():
+def test_inference_enumerates_same_task_ids_as_loader(monkeypatch):
+    monkeypatch.setenv("HF_TOKEN", "hf_test_token")
+    monkeypatch.setenv("MODEL_NAME", "test-model")
+    monkeypatch.setenv("API_BASE_URL", "https://router.huggingface.co/v1")
     results = run_all_inference("tasks")
     assert [result["task_id"] for result in results] == list_task_ids("tasks")
 

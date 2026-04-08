@@ -22,7 +22,11 @@ htmlcov/
 # Local environment files
 .env
 .env.*
+!.env.example
 
 # OS/editor noise
 .DS_Store
 Thumbs.db
+
+# Packaging artifacts
+*.egg-info/

@@ -12,6 +12,7 @@ dependencies = [
   "fastapi>=0.110",
   "uvicorn>=0.29",
   "pydantic>=2.6",
+  "openai>=2.0",
   "gradio>=4.0",
   "httpx>=0.27",
   "pytest>=8.0"
@@ -19,6 +20,12 @@ dependencies = [
 
 [project.scripts]
 server = "server.app:main"
+
+[tool.setuptools]
+py-modules = ["client", "inference", "models"]
+
+[tool.setuptools.packages.find]
+include = ["server"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
