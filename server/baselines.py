@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Any
 
 from models import CircuitAction, CircuitObservation, CircuitTaskSpec
 from server.environment import CircuitEnvironment
-from server.simulator import SUCCESS_TOLERANCE, evaluate_circuit_state, valid_actions
+from server.grader import is_success
+from server.simulator import SUCCESS_TOLERANCE, evaluate_circuit_state
+
+BASELINE_ACTIONS = ["r_up", "r_down", "c_up", "c_down"]
 
 
 def _log_space(min_value: float, max_value: float, num_points: int) -> list[float]:
@@ -26,24 +29,19 @@ def _log_space(min_value: float, max_value: float, num_points: int) -> list[floa
     return [10 ** (log_min + (index * step)) for index in range(num_points)]
 
 
-def _episode_result(
+def build_baseline_result(
     *,
     baseline_name: str,
     task_id: str,
     score: float,
     success: bool,
     steps_used: int,
-    evaluations: int,
-    best_r_ohms: float,
-    best_c_farads: float,
+    evaluations: int | None,
     achieved_hz: float,
+    current_r_ohms: float,
+    current_c_farads: float,
     normalized_error: float,
     normalized_cost: float,
-    final_r_ohms: float,
-    final_c_farads: float,
-    final_hz: float,
-    final_normalized_error: float,
-    final_normalized_cost: float,
 ) -> dict[str, Any]:
     """Build one shared baseline payload shape."""
 
@@ -54,16 +52,11 @@ def _episode_result(
         "success": success,
         "steps_used": steps_used,
         "evaluations": evaluations,
-        "best_r_ohms": best_r_ohms,
-        "best_c_farads": best_c_farads,
         "achieved_hz": achieved_hz,
+        "current_r_ohms": current_r_ohms,
+        "current_c_farads": current_c_farads,
         "normalized_error": normalized_error,
         "normalized_cost": normalized_cost,
-        "final_r_ohms": final_r_ohms,
-        "final_c_farads": final_c_farads,
-        "final_hz": final_hz,
-        "final_normalized_error": final_normalized_error,
-        "final_normalized_cost": final_normalized_cost,
     }
 
 
@@ -77,47 +70,26 @@ def run_baseline_episode(
     """Run one deterministic policy against the environment until termination."""
 
     observation = env.reset(task_id)
-    state = env.state()
-    best_reward = 0.0
-    best_snapshot = {
-        "r_ohms": state.current_r_ohms or observation.current_r_ohms,
-        "c_farads": state.current_c_farads or observation.current_c_farads,
-        "hz": state.current_hz or observation.current_hz,
-        "normalized_error": observation.normalized_error,
-        "normalized_cost": observation.current_cost,
-    }
-
     while not env.is_done:
         action_name = choose_action(observation)
-        observation, reward, _ = env.step(CircuitAction(action=action_name))
-        if reward >= best_reward:
-            best_reward = reward
-            best_snapshot = {
-                "r_ohms": observation.current_r_ohms,
-                "c_farads": observation.current_c_farads,
-                "hz": observation.current_hz,
-                "normalized_error": observation.normalized_error,
-                "normalized_cost": observation.current_cost,
-            }
+        observation, _, done = env.step(CircuitAction(action=action_name))
+        if done:
+            break
 
     final_state = env.state()
-    return _episode_result(
+    score = env.score()
+    return build_baseline_result(
         baseline_name=baseline_name,
         task_id=task_id,
-        score=env.score(),
-        success=best_snapshot["normalized_error"] <= SUCCESS_TOLERANCE,
+        score=score,
+        success=is_success(score),
         steps_used=final_state.step_count,
-        evaluations=final_state.step_count,
-        best_r_ohms=float(best_snapshot["r_ohms"]),
-        best_c_farads=float(best_snapshot["c_farads"]),
-        achieved_hz=float(best_snapshot["hz"]),
-        normalized_error=float(best_snapshot["normalized_error"]),
-        normalized_cost=float(best_snapshot["normalized_cost"]),
-        final_r_ohms=observation.current_r_ohms,
-        final_c_farads=observation.current_c_farads,
-        final_hz=observation.current_hz,
-        final_normalized_error=observation.normalized_error,
-        final_normalized_cost=observation.current_cost,
+        evaluations=None,
+        achieved_hz=observation.current_hz,
+        current_r_ohms=observation.current_r_ohms,
+        current_c_farads=observation.current_c_farads,
+        normalized_error=observation.normalized_error,
+        normalized_cost=observation.current_cost,
     )
 
 
@@ -129,11 +101,10 @@ def run_random_baseline(
     """Run a seeded uniform-random policy over the discrete action space."""
 
     rng = random.Random(seed)
-    actions: Sequence[str] = valid_actions()
     return run_baseline_episode(
         env,
         task_id,
-        lambda _: rng.choice(actions),
+        lambda _: rng.choice(BASELINE_ACTIONS),
         baseline_name="random",
     )
 
@@ -196,23 +167,19 @@ def run_bruteforce_baseline(
                 best_c = c_farads
 
     assert best_result is not None
-    return _episode_result(
+    score = float(best_result["reward"])
+    return build_baseline_result(
         baseline_name="bruteforce",
         task_id=task.task_id,
-        score=float(best_result["reward"]),
-        success=float(best_result["normalized_error"]) <= SUCCESS_TOLERANCE,
-        steps_used=min(evaluations, task.max_steps),
+        score=score,
+        success=is_success(score),
+        steps_used=0,
         evaluations=evaluations,
-        best_r_ohms=best_r,
-        best_c_farads=best_c,
         achieved_hz=float(best_result["current_hz"]),
+        current_r_ohms=best_r,
+        current_c_farads=best_c,
         normalized_error=float(best_result["normalized_error"]),
         normalized_cost=float(best_result["normalized_cost"]),
-        final_r_ohms=best_r,
-        final_c_farads=best_c,
-        final_hz=float(best_result["current_hz"]),
-        final_normalized_error=float(best_result["normalized_error"]),
-        final_normalized_cost=float(best_result["normalized_cost"]),
     )
 
 

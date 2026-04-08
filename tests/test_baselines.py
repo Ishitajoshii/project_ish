@@ -1,6 +1,7 @@
 """Confidence checks for deterministic baseline comparators."""
 
 from server.baselines import (
+    BASELINE_ACTIONS,
     brute_force_baseline,
     choose_heuristic_action,
     heuristic_baseline,
@@ -22,8 +23,10 @@ def test_random_baseline_is_deterministic_for_fixed_seed():
     assert first == second
     assert first["baseline_name"] == "random"
     assert first["task_id"] == task.task_id
-    assert first["evaluations"] == first["steps_used"]
+    assert first["evaluations"] is None
+    assert first["steps_used"] <= task.max_steps
     assert 0.0 <= first["score"] <= 1.0
+    assert set(BASELINE_ACTIONS) == {"r_up", "r_down", "c_up", "c_down"}
 
 
 def test_choose_heuristic_action_moves_cutoff_toward_target():
@@ -43,9 +46,9 @@ def test_heuristic_baseline_returns_shared_payload_fields():
     assert result["baseline_name"] == "heuristic"
     assert result["task_id"] == task.task_id
     assert result["steps_used"] <= task.max_steps
-    assert result["evaluations"] == result["steps_used"]
-    assert task.min_r_ohms <= result["best_r_ohms"] <= task.max_r_ohms
-    assert task.min_c_farads <= result["best_c_farads"] <= task.max_c_farads
+    assert result["evaluations"] is None
+    assert task.min_r_ohms <= result["current_r_ohms"] <= task.max_r_ohms
+    assert task.min_c_farads <= result["current_c_farads"] <= task.max_c_farads
     assert 0.0 <= result["score"] <= 1.0
     assert 0.0 <= result["normalized_cost"] <= 1.0
 
@@ -58,9 +61,9 @@ def test_bruteforce_baseline_reports_grid_evaluations_and_best_candidate():
     assert result["baseline_name"] == "bruteforce"
     assert result["task_id"] == task.task_id
     assert result["evaluations"] == 20
-    assert result["steps_used"] == task.max_steps
-    assert task.min_r_ohms <= result["best_r_ohms"] <= task.max_r_ohms
-    assert task.min_c_farads <= result["best_c_farads"] <= task.max_c_farads
+    assert result["steps_used"] == 0
+    assert task.min_r_ohms <= result["current_r_ohms"] <= task.max_r_ohms
+    assert task.min_c_farads <= result["current_c_farads"] <= task.max_c_farads
     assert 0.0 <= result["score"] <= 1.0
     assert 0.0 <= result["normalized_error"]
 
